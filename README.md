@@ -24,7 +24,7 @@ This is **not yet a complete Telegram client**. Media display/downloads, notific
 ### Build locally (credentials required for live Telegram)
 
 1. Obtain your own app **API ID** and **API hash** at [my.telegram.org](https://my.telegram.org).
-2. Install Android Studio, JDK 17, SDK 36.
+2. Install a recent Android Studio compatible with AGP 9.2, JDK 17, SDK 37 (Android 17).
 3. Clone this repo, open it in Android Studio.
 4. In the root `local.properties` add:
 
