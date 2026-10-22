@@ -1,16 +1,17 @@
 import java.util.Properties
 
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
+}
+
 val privateProps = Properties().apply {
     val file = rootProject.file("local.properties")
     if (file.isFile) file.inputStream().use { load(it) }
 }
 val telegramApiId = privateProps.getProperty("telegram.apiId")?.trim()?.toIntOrNull() ?: 0
 val telegramApiHash = privateProps.getProperty("telegram.apiHash")?.trim().orEmpty()
-plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.plugin.compose")
-}
 
 android {
     namespace = "dev.glacia.app"
