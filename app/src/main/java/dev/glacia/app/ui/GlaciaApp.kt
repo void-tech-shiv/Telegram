@@ -111,17 +111,7 @@ private fun GlaciaApp(
                 Conversation(
                     chat = current,
                     messages = messages[current.id].orEmpty(),
-                    dark = dark,
-                    onSend = { text ->
-                        val currentMessages = messages[current.id].orEmpty()
-                        messages[current.id] = currentMessages + Message(
-                            id = System.nanoTime(),
-                            chatId = current.id,
-                            text = text,
-                            time = "now",
-                            outgoing = true
-                        )
-                    }
+                    dark = dark
                 )
             } else {
                 when (tab) {
