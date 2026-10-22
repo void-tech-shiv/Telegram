@@ -51,7 +51,7 @@ class TdlibSession(private val context: Context) {
         }
     }
 
-    private fun request(function: TdApi.Function, onSuccess: (() -> Unit)? = null) {
+    private fun request(function: TdApi.Function<*>, onSuccess: (() -> Unit)? = null) {
         val active = client ?: run {
             _auth.value = Auth.Error("TDLib is not running")
             return
