@@ -39,8 +39,10 @@ class TdlibTelegramGateway(
 
     private val nativeChats = ConcurrentHashMap<Long, TdApi.Chat>()
     @Volatile private var client: Client? = null
+    @Volatile private var disposed: Boolean = false
 
     override fun start() {
+        if (disposed) return
         if (apiId <= 0 || apiHash.isBlank()) {
             _stage.value = LoginStage.Unconfigured
             return
@@ -83,7 +85,7 @@ class TdlibTelegramGateway(
                     if (chatId != update.message.chatId) old
                     else (old.filterNot { it.id == update.oldMessageId } +
                         toMessage(update.message)).distinctBy { it.id }
-                        .sortedWith(compareBy<Message> { it.time }.thenBy { it.id })
+                        .sortedBy { it.id }
                 }
                 refreshOneChat(update.message.chatId)
             }
@@ -121,6 +123,7 @@ class TdlibTelegramGateway(
                 _chats.value = emptyList()
                 _histories.value = emptyMap()
                 nativeChats.clear()
+                if (!disposed) start()
             }
             else -> _stage.value = LoginStage.Unavailable("Additional Telegram authorization step required")
         }
@@ -220,7 +223,12 @@ class TdlibTelegramGateway(
 
     override suspend fun refreshChats() {
         check(_stage.value is LoginStage.Ready) { "Log in first" }
-        request(TdApi.LoadChats(TdApi.ChatListMain(), 100)).let { }
+        try {
+            request(TdApi.LoadChats(TdApi.ChatListMain(), 100))
+        } catch (error: IllegalStateException) {
+            // TDLib 404 means all chats are loaded; keep the in-memory list.
+            if (!error.message.orEmpty().contains("Telegram 404:")) throw error
+        }
         val response = request(TdApi.GetChats(TdApi.ChatListMain(), 100))
         if (response is TdApi.Chats) response.chatIds.forEach { refreshOneChat(it) }
     }
@@ -310,6 +318,7 @@ class TdlibTelegramGateway(
     override fun clearError() { _error.value = null }
 
     override fun close() {
+        disposed = true
         client?.send(TdApi.Close(), null, null)
         client = null
     }
