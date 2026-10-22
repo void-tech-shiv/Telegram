@@ -3,7 +3,6 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
@@ -25,7 +24,7 @@ fun String.javaStringLiteral() = replace("\\", "\\\\").replace("\"", "\\\"")
 
 android {
     namespace = "dev.glacia.app"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "dev.glacia.app"
