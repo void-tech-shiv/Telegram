@@ -1,61 +1,67 @@
 # GLACIA — The Glass Messenger
 
-An **original Android Jetpack Compose Liquid Glass interface** intended to become a Telegram client through TDLib.
+Original **Kotlin + Jetpack Compose** Liquid Glass Telegram client.
 
-**Current status: Phase 1 UI-only demo.** There is NO Telegram authorization, chat sync, sending to Telegram, notification delivery or TDLib binary in this commit. All names and messages are fictional. The composer only adds messages to local, in-memory demo state (lost on app restart).
+## Phase 2: TDLib-powered login and messaging branch
 
-## Included
+**Development status:** Phase 2 implementation; cloud build and device login still require verification. No production readiness claim. Phase 1 demo remains accessible without any credentials.
 
-- Adaptive Midnight Glass / Frosted Daylight / Follow System modes, persisted via DataStore
-- Real backdrop/refraction glass on floating header, bottom navigation and composer via Haze 2
-- Aurora gradient background, demo chat list, live local search, chat bubbles and mock composer
-- Chats / Discover / Settings tabs with back navigation
-- Repository and TelegramGateway interfaces prepared for later real TDLib adapter
-- Android CI to compile and attach a debug APK on every push
+- Real [TDLib](https://core.telegram.org/tdlib/) integration via JNI Java bindings
+- Phone number, Telegram code, Telegram 2FA password
+- Email confirmation, other-device approval, registration states
+- Chat list from TDLib and 50 latest messages in selected chats
+- Send plain-text messages from real authorized sessions
+- Live new-message and chat metadata updates
+- Persisted local TDLib database and Keystore-wrapped random database key
+- Real account logout, with explicit confirmation
+- Both Midnight Glass and Frosted Daylight, plus System theme
+- Separate offline demo mode when API credentials are not configured
 
-## Stack
+### Feature scope and limits
 
-- Kotlin 2.4.20, Android Gradle Plugin 8.13.2, Gradle 8.13, JDK 17
-- Android SDK 36, minSdk 26, targetSdk 36
-- Jetpack Compose BOM 2026.09.00, Material3
-- Haze 2.0.1 core + haze-glass
-- Preferences DataStore 1.2.1
-- No backend, no secrets, no Telegram credentials
+This is **not yet a complete Telegram client**. Media display/downloads, notifications, calling, full chat folder/order handling, animated glass performance tuning, multi-account, Secret Chats and message editing/deleting are future phases. Only basic cloud-chat and text-message flows are covered. Some chat types/topics may require additional TDLib request parameters.
 
-## Build
+### Build locally (credentials required for live Telegram)
 
-1. Install Android Studio with Android SDK 36 and JDK 17.
-2. Clone: git clone https://github.com/void-tech-shiv/Telegram.git
-3. Open the folder in Android Studio. This repo includes Gradle wrapper scripts and jar; sync Gradle.
-4. Run the :app configuration on Android 8.0+ or use ./gradlew :app:assembleDebug
-5. The debug APK is at app/build/outputs/apk/debug/app-debug.apk.
+1. Obtain your own app **API ID** and **API hash** at [my.telegram.org](https://my.telegram.org).
+2. Install Android Studio, JDK 17, SDK 36.
+3. Clone this repo, open it in Android Studio.
+4. In the root `local.properties` add:
 
-Or in GitHub Actions, open **Android demo CI**, run workflow, then download the **GLACIA-phase1-debug-apk** artifact.
+```properties
+sdk.dir=/path/to/android/sdk
+TELEGRAM_API_ID=YOUR_NUMERIC_API_ID
+TELEGRAM_API_HASH=YOUR_API_HASH
+```
 
-## Architecture
+5. Run `./gradlew :app:assembleDebug` (or `gradlew.bat :app:assembleDebug` on Windows).
+6. Install `app/build/outputs/apk/debug/app-debug.apk`.
 
-- app/data/ChatModels.kt — UI models + repository contract
-- app/data/TelegramGateway.kt — typed Phase 2 TDLib boundary (no implementation)
-- app/settings/ThemePreferences.kt — DataStore persistence
-- app/ui/GlaciaTheme.kt — adaptive colors
-- app/ui/GlaciaApp.kt — chat list, chat details, search, navigation and Haze surfaces
-- app/src/test — JVM unit tests
+**Never share your API hash, Telegram login code or 2-step password in a public issue, commit or chat.** `local.properties` and `api-credentials.properties` are gitignored.
 
-## Roadmap
+> Compiled-in BuildConfig API credentials are extractable from the APK; do not treat APKs containing them as secret. The public GitHub Actions debug APK builds deliberately use API_ID=0 and blank hash, so the workflow exercises only the offline demo UI. To test real login, perform a private local build with credentials. Do not put private credentials in publicly distributed artifacts.
 
-- **Phase 1:** Offline UI foundation (this commit)
-- **Phase 2:** Integrate TDLib, credentials from a private local file, authorization state machine and authenticated chat list
-- **Phase 3:** Real conversations, message media, notifications and multiple-account architecture
-- **Phase 4:** Hardening, accessibility, performance and Play Store compliance
+### Architecture
 
-## Security and trademarks
+- `app/data/TdlibTelegramGateway.kt`: TDLib JNI bridge, authorization, chat updates, message sending/history.
+- `app/data/DatabaseKeyStore.kt`: Android Keystore AES-GCM wrapping of the persistent TDLib database key.
+- `app/data/TelegramGateway.kt`: UI-facing session and auth state model.
+- `app/ui/GlaciaPhase2Root.kt`: real login and chat screens in a glass UI.
+- `app/ui/GlaciaApp.kt`: original Phase 1 offline demo.
+- `app/settings/ThemePreferences.kt`: saved appearance setting.
+- `.github/workflows/android.yml`: no-credentials CI build and debug APK artifact.
 
-GLACIA is not affiliated with Telegram. Do not ship credentials, phone numbers, database files or authorization tokens into git. Telegram Secret Chats require particular handling; hidden UI panels are not equivalent to E2EE. Audit TDLib handling and third-party dependency versions before any live-account login. Honor Telegram API terms and attribution requirements.
+### QA before merging
 
-## Phase 1 QA checklist
+- Verify Gradle build succeeds and JNI `libtdjni.so` loads on arm64-v8a.
+- Verify permissions and no credentials are checked in.
+- Confirm logged-out app requests phone number.
+- Test code flow, two-step verification, email verification, registration/other-device states.
+- Verify messages/chats actually sync; test offline restart with authorized session.
+- Confirm Keystore key survives app restart and session recovery.
+- Test sign-out, incorrect OTP, flood-wait errors and expired authentication.
+- Review accessibility, security, Telegram API terms, performance and privacy.
 
-- Switch dark/light/system, force-stop and reopen: choice persists.
-- Search demo chats, open a chat, send a local-only message, press Back.
-- Switch navigation tabs and open Settings.
-- Rotate device, test large fonts and accessibility contrast.
-- Confirm no Telegram login or network permission exists yet.
+### License and disclaimer
+
+GLACIA is independent of Telegram; no affiliation or endorsement. TDLib is Boost licensed; the community AAR is maintained by a third party, not Telegram itself. Evaluate native dependency provenance before shipping. Telegram login codes and 2FA should never be collected outside TDLib/Android on-device authorization.
