@@ -48,6 +48,7 @@ import dev.chrisbanes.haze.glass.hazeGlass
 import dev.glacia.app.data.Chat
 import dev.glacia.app.data.DemoChatRepository
 import dev.glacia.app.data.Message
+import dev.glacia.app.data.TdlibSession
 import dev.glacia.app.settings.ThemeChoice
 import dev.glacia.app.settings.ThemePreferences
 import kotlinx.coroutines.launch
@@ -58,12 +59,24 @@ fun GlaciaRoot() {
     val preferences = remember(context) { ThemePreferences(context) }
     val theme by preferences.theme.collectAsState(initial = ThemeChoice.SYSTEM)
     val scope = rememberCoroutineScope()
+    val session = remember(context) { TdlibSession(context) }
+    DisposableEffect(session) {
+        session.start()
+        onDispose { session.close() }
+    }
+    val auth by session.auth.collectAsState()
+    val realChats by session.chats.collectAsState()
     GlaciaTheme(choice = theme) { dark ->
-        GlaciaApp(
-            dark = dark,
-            selectedTheme = theme,
-            onThemeChange = { scope.launch { preferences.setTheme(it) } }
-        )
+        if (auth is TdlibSession.Auth.Ready) {
+            GlaciaApp(
+                dark = dark,
+                selectedTheme = theme,
+                liveChats = realChats,
+                onThemeChange = { scope.launch { preferences.setTheme(it) } }
+            )
+        } else {
+            AuthScreen(auth, session)
+        }
     }
 }
 
@@ -88,11 +101,12 @@ private fun GlassPanel(
 private fun GlaciaApp(
     dark: Boolean,
     selectedTheme: ThemeChoice,
+    liveChats: List<Chat>,
     onThemeChange: (ThemeChoice) -> Unit
 ) {
     val hazeState = rememberHazeState()
     val repository = remember { DemoChatRepository() }
-    val chats = remember { repository.chats() }
+    val chats = liveChats
     var tab by rememberSaveable { mutableStateOf("Chats") }
     var openChatId by rememberSaveable { mutableStateOf<Long?>(null) }
     var query by rememberSaveable { mutableStateOf("") }
@@ -110,7 +124,7 @@ private fun GlaciaApp(
             if (current != null) {
                 Conversation(
                     chat = current,
-                    messages = messages[current.id].orEmpty(),
+                    messages = emptyList(),
                     dark = dark,
                     onSend = { text ->
                         val currentMessages = messages[current.id].orEmpty()
@@ -165,7 +179,7 @@ private fun GlaciaApp(
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(current.title, fontWeight = FontWeight.Bold, maxLines = 1)
-                        Text("Offline preview", style = MaterialTheme.typography.labelSmall)
+                        Text("Telegram • read-only preview", style = MaterialTheme.typography.labelSmall)
                     }
                 } else {
                     Column(Modifier.weight(1f)) {
@@ -186,7 +200,7 @@ private fun GlaciaApp(
             }
         }
 
-        if (current != null) {
+        if (false && current != null) {
             ComposerBar(
                 hazeState = hazeState,
                 onSend = { text ->
@@ -270,7 +284,7 @@ private fun ChatList(
                     Spacer(Modifier.width(12.dp))
                     Box(Modifier.weight(1f)) {
                         if (query.isEmpty()) {
-                            Text("Search demo chats", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.48f))
+                            Text("Search Telegram chats", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.48f))
                         }
                         BasicTextField(
                             value = query,
@@ -284,7 +298,7 @@ private fun ChatList(
                     }
                 }
                 Spacer(Modifier.height(20.dp))
-                Text("MESSAGES  •  DEMO ONLY", fontWeight = FontWeight.Bold,
+                Text("TELEGRAM CHATS • LIVE", fontWeight = FontWeight.Bold,
                     fontSize = 11.sp, letterSpacing = 1.5.sp,
                     color = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.height(9.dp))
@@ -335,7 +349,7 @@ private fun ChatList(
         }
         if (chats.isEmpty()) {
             item {
-                Text("No matching demo chats.", Modifier.padding(28.dp),
+                Text("No matching Telegram chats.", Modifier.padding(28.dp),
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
             }
         }
@@ -375,7 +389,7 @@ private fun Conversation(chat: Chat, messages: List<Message>, dark: Boolean) {
         item {
             Box(Modifier.fillMaxWidth().padding(vertical = 12.dp),
                 contentAlignment = Alignment.Center) {
-                Text("LOCAL PREVIEW • NOT SENT TO TELEGRAM", fontSize = 10.sp,
+                Text("LIVE CHAT • HISTORY AND SENDING IN PHASE 3", fontSize = 10.sp,
                     letterSpacing = 0.8.sp, color = MaterialTheme.colorScheme.primary)
             }
         }
@@ -513,7 +527,7 @@ private fun SettingsScreen(selected: ThemeChoice, onSelect: (ThemeChoice) -> Uni
         Text("PREVIEW MODE", color = MaterialTheme.colorScheme.primary,
             fontSize = 12.sp, letterSpacing = 1.4.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
-        Text("Telegram account login, live chats and media are not enabled yet.",
+        Text("Authenticated TDLib chat-list sync enabled. Messages, media and sending are planned for Phase 3.",
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f))
     }
 }
