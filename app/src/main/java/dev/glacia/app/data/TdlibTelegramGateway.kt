@@ -161,7 +161,7 @@ class TdlibTelegramGateway(
         }
     }
 
-    private suspend fun request(query: TdApi.Function): TdApi.Object =
+    private suspend fun request(query: TdApi.Function<*>): TdApi.Object =
         suspendCancellableCoroutine { continuation ->
             val current = client
             if (current == null) {
