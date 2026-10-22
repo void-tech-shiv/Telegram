@@ -17,6 +17,7 @@ fun AuthScreen(state: TdlibSession.Auth, session: TdlibSession) {
     var code by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    val notice by session.notice.collectAsState()
 
     Column(
         modifier = Modifier.fillMaxSize().safeDrawingPadding().padding(28.dp),
@@ -66,13 +67,23 @@ fun AuthScreen(state: TdlibSession.Auth, session: TdlibSession) {
                 Text("This account requires an additional Telegram authorization step. " +
                     "Email and registration workflows are not supported in this build. " +
                     "Do not share your codes or passwords with anyone.")
-            is TdlibSession.Auth.Error ->
+            is TdlibSession.Auth.Error -> {
                 Text(state.reason, color = MaterialTheme.colorScheme.error)
+                Spacer(Modifier.height(8.dp))
+                Text("If you updated local.properties, rebuild and reinstall the app.",
+                    style = MaterialTheme.typography.bodySmall)
+            }
             TdlibSession.Auth.Ready -> Text("Connected")
         }
         error?.let {
             Spacer(Modifier.height(12.dp))
             Text(it, color = MaterialTheme.colorScheme.error)
+        }
+        notice?.let { message ->
+            Spacer(Modifier.height(16.dp))
+            Text(message, color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodyMedium)
+            TextButton(onClick = { session.dismissNotice() }) { Text("Dismiss") }
         }
         Spacer(Modifier.height(24.dp))
         Text("GLACIA is an independent client; not affiliated with Telegram.",
