@@ -46,7 +46,6 @@ import dev.chrisbanes.haze.rememberHazeState
 import dev.chrisbanes.haze.glass.GlassStyle
 import dev.chrisbanes.haze.glass.hazeGlass
 import dev.glacia.app.data.Chat
-import dev.glacia.app.data.DemoChatRepository
 import dev.glacia.app.data.Message
 import dev.glacia.app.data.TdlibSession
 import dev.glacia.app.settings.ThemeChoice
@@ -105,16 +104,10 @@ private fun GlaciaApp(
     onThemeChange: (ThemeChoice) -> Unit
 ) {
     val hazeState = rememberHazeState()
-    val repository = remember { DemoChatRepository() }
     val chats = liveChats
     var tab by rememberSaveable { mutableStateOf("Chats") }
     var openChatId by rememberSaveable { mutableStateOf<Long?>(null) }
     var query by rememberSaveable { mutableStateOf("") }
-    val messages = remember {
-        mutableStateMapOf<Long, List<Message>>().apply {
-            chats.forEach { put(it.id, repository.messages(it.id)) }
-        }
-    }
     val current = chats.firstOrNull { it.id == openChatId }
     BackHandler(enabled = current != null) { openChatId = null }
 
@@ -125,17 +118,7 @@ private fun GlaciaApp(
                 Conversation(
                     chat = current,
                     messages = emptyList(),
-                    dark = dark,
-                    onSend = { text ->
-                        val currentMessages = messages[current.id].orEmpty()
-                        messages[current.id] = currentMessages + Message(
-                            id = System.nanoTime(),
-                            chatId = current.id,
-                            text = text,
-                            time = "now",
-                            outgoing = true
-                        )
-                    }
+                    dark = dark
                 )
             } else {
                 when (tab) {
@@ -200,22 +183,7 @@ private fun GlaciaApp(
             }
         }
 
-        if (false && current != null) {
-            ComposerBar(
-                hazeState = hazeState,
-                onSend = { text ->
-                    val existing = messages[current.id].orEmpty()
-                    messages[current.id] = existing + Message(
-                        id = System.nanoTime(),
-                        chatId = current.id,
-                        text = text,
-                        time = "now",
-                        outgoing = true
-                    )
-                },
-                modifier = Modifier.align(Alignment.BottomCenter)
-            )
-        } else {
+        if (current == null) {
             GlassPanel(
                 hazeState = hazeState,
                 modifier = Modifier.align(Alignment.BottomCenter)
