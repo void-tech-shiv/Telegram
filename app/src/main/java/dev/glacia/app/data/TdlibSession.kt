@@ -29,6 +29,10 @@ class TdlibSession(private val context: Context) {
 
     private val _auth = MutableStateFlow<Auth>(Auth.Starting)
     val auth = _auth.asStateFlow()
+    // Recoverable request errors remain visible without replacing the login form.
+    private val _notice = MutableStateFlow<String?>(null)
+    val notice = _notice.asStateFlow()
+    fun dismissNotice() { _notice.value = null }
     private val _chats = MutableStateFlow<List<Chat>>(emptyList())
     val chats = _chats.asStateFlow()
     private val known = linkedMapOf<Long, TdApi.Chat>()
@@ -51,16 +55,46 @@ class TdlibSession(private val context: Context) {
         }
     }
 
-    private fun request(function: TdApi.Function<*>, onSuccess: (() -> Unit)? = null) {
+    private fun safeFailure(stage: String, error: TdApi.Error): String {
+        // Avoid leaking raw server error messages: allow only short symbolic tags.
+        val token = error.message?.trim()?.uppercase(Locale.ROOT)
+            ?.takeIf { it.matches(Regex("[A-Z][A-Z0-9_]{2,63}")) }
+        val guidance = when (token) {
+            "API_ID_INVALID", "API_HASH_INVALID" ->
+                "Check the API ID/hash in local.properties, then rebuild the APK."
+            "PHONE_NUMBER_INVALID" -> "Check the country code and phone number."
+            "PHONE_NUMBER_BANNED" -> "This number is restricted by Telegram."
+            "PHONE_CODE_INVALID", "PHONE_CODE_EMPTY" -> "Check your Telegram verification code."
+            "PHONE_CODE_EXPIRED" -> "Your verification code has expired."
+            "PASSWORD_HASH_INVALID" -> "The two-step verification password was not accepted."
+            else -> if (token?.startsWith("FLOOD_WAIT_") == true) {
+                "Telegram rate-limited the request. Retry later."
+            } else {
+                "Check your credentials and input, then retry."
+            }
+        }
+        val suffix = token?.let { ", $it" }.orEmpty()
+        return "$stage failed (code ${error.code}$suffix). $guidance"
+    }
+
+    private fun request(function: TdApi.Function<*>, stage: String) {
         val active = client ?: run {
-            _auth.value = Auth.Error("TDLib is not running")
+            _auth.value = Auth.Error("TDLib is not running. Restart the app.")
             return
         }
+        _notice.value = null
         active.send(function) { result ->
             if (result is TdApi.Error) {
-                // Avoid rendering raw Telegram server error text that may include private input.
-                _auth.value = Auth.Error("Request rejected (code ${result.code}). Try again.")
-            } else onSuccess?.invoke()
+                // TDLib uses 404 to indicate LoadChats has no more chats to return.
+                if (stage == "Chat sync" && result.code == 404) return@send
+                val diagnostic = safeFailure(stage, result)
+                if (stage == "TDLib initialization") {
+                    _auth.value = Auth.Error(diagnostic)
+                } else {
+                    // Phone/OTP/2FA fields stay visible so the user can retry.
+                    _notice.value = diagnostic
+                }
+            }
         }
     }
 
@@ -108,7 +142,7 @@ class TdlibSession(private val context: Context) {
                     Build.MODEL ?: "Android",
                     Build.VERSION.RELEASE ?: "Android",
                     BuildConfig.VERSION_NAME
-                ))
+                ), "TDLib initialization")
             }
             is TdApi.AuthorizationStateWaitPhoneNumber -> _auth.value = Auth.Phone
             is TdApi.AuthorizationStateWaitCode -> _auth.value = Auth.Code
@@ -118,7 +152,7 @@ class TdlibSession(private val context: Context) {
             is TdApi.AuthorizationStateWaitRegistration -> _auth.value = Auth.RegistrationRequired
             is TdApi.AuthorizationStateReady -> {
                 _auth.value = Auth.Ready
-                request(TdApi.LoadChats(TdApi.ChatListMain(), 100))
+                request(TdApi.LoadChats(TdApi.ChatListMain(), 100), "Chat sync")
             }
             is TdApi.AuthorizationStateClosed -> {
                 client = null
@@ -156,10 +190,10 @@ class TdlibSession(private val context: Context) {
 
     fun submitPhone(phone: String) {
         require(phone.startsWith("+") && phone.length in 8..17) { "Enter a phone number with country code." }
-        request(TdApi.SetAuthenticationPhoneNumber(phone, null))
+        request(TdApi.SetAuthenticationPhoneNumber(phone, null), "Phone login")
     }
-    fun submitCode(code: String) = request(TdApi.CheckAuthenticationCode(code))
-    fun submitPassword(password: String) = request(TdApi.CheckAuthenticationPassword(password))
+    fun submitCode(code: String) = request(TdApi.CheckAuthenticationCode(code), "Verification code")
+    fun submitPassword(password: String) = request(TdApi.CheckAuthenticationPassword(password), "Two-step password")
 
     fun close() {
         client?.send(TdApi.Close()) { }
