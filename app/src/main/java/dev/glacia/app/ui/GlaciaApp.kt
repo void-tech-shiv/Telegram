@@ -68,7 +68,7 @@ fun GlaciaRoot() {
 }
 
 @Composable
-private fun GlassPanel(
+internal fun GlassPanel(
     hazeState: HazeState,
     modifier: Modifier = Modifier,
     radius: Dp = 28.dp,
@@ -111,17 +111,7 @@ private fun GlaciaApp(
                 Conversation(
                     chat = current,
                     messages = messages[current.id].orEmpty(),
-                    dark = dark,
-                    onSend = { text ->
-                        val currentMessages = messages[current.id].orEmpty()
-                        messages[current.id] = currentMessages + Message(
-                            id = System.nanoTime(),
-                            chatId = current.id,
-                            text = text,
-                            time = "now",
-                            outgoing = true
-                        )
-                    }
+                    dark = dark
                 )
             } else {
                 when (tab) {
@@ -223,7 +213,7 @@ private fun GlaciaApp(
 }
 
 @Composable
-private fun AuroraBackground(dark: Boolean) {
+internal fun AuroraBackground(dark: Boolean) {
     val c1 = if (dark) Color(0xFF07101D) else Color(0xFFE8F7FF)
     val c2 = if (dark) Color(0xFF23143C) else Color(0xFFE6E1FF)
     Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(c1, c2, c1)))) {
