@@ -196,6 +196,7 @@ class TdlibSession(private val context: Context) {
     fun hangupNativeCall() = nativeCalls.hangUp()
     fun muteNativeCall(muted: Boolean) = nativeCalls.setMuted(muted)
     fun speakerNativeCall(on: Boolean) = nativeCalls.setSpeaker(on)
+    fun bluetoothNativeCall() = nativeCalls.useBluetooth()
     fun switchNativeCamera() = nativeCalls.switchCamera()
 
     // TDLib call invitations are observable; no native media engine is present.
