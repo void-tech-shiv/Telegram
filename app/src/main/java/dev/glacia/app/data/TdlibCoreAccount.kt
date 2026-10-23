@@ -266,6 +266,58 @@ class TdlibCoreAccount(
         }
     }
 
+    /** Resolve an exact public @username, then explicitly add on Telegram.
+     *  We never share the current user's phone number by default.
+     */
+    fun addContactByUsername(raw: String) {
+        val username = raw.trim().removePrefix("@")
+        if (username.length !in 3..32 ||
+            !username.matches(Regex("[A-Za-z0-9_]+"))) {
+            synchronized(lock) {
+                _state.value = _state.value.copy(notice = "Enter a valid Telegram @username.")
+            }
+            return
+        }
+        val active = client() ?: return
+        synchronized(lock) {
+            if (_state.value.busy) return
+            _state.value = _state.value.copy(busy = true, notice = null)
+        }
+        active.send(TdApi.SearchPublicChat(username)) { response ->
+            val type = (response as? TdApi.Chat)?.type as? TdApi.ChatTypePrivate
+            if (type == null) {
+                synchronized(lock) { _state.value = _state.value.copy(
+                    busy = false, notice = "This username isn't a public Telegram user."
+                ) }
+                return@send
+            }
+            active.send(TdApi.GetUser(type.userId)) { user ->
+                if (user !is TdApi.User) {
+                    synchronized(lock) { _state.value = _state.value.copy(
+                        busy = false, notice = "Telegram user is unavailable."
+                    ) }
+                    return@send
+                }
+                val contact = TdApi.ImportedContact().apply {
+                    phoneNumber = ""
+                    firstName = user.firstName.orEmpty()
+                    lastName = user.lastName.orEmpty()
+                }
+                active.send(TdApi.AddContact(type.userId, contact, false)) { reply ->
+                    synchronized(lock) {
+                        _state.value = _state.value.copy(
+                            busy = false,
+                            notice = if (reply is TdApi.Error)
+                                "Add contact failed (Telegram code ${reply.code})."
+                            else "Contact added to Telegram."
+                        )
+                    }
+                    if (reply !is TdApi.Error) refresh()
+                }
+            }
+        }
+    }
+
     /** Phase 4.1: remove only the selected Telegram-cloud contact. */
     fun removeContact(personId: Long) {
         val active = client() ?: return
