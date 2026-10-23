@@ -74,6 +74,13 @@ class TdlibSession(private val context: Context) {
     private val discovery = TdlibDiscovery({ client }, fileStore)
     private val typing = TdlibTyping { client }
     private val notifications = GlaciaNotifications(context)
+    private val _notificationSetup = MutableStateFlow("Waiting for Telegram authorization")
+    val notificationSetup = _notificationSetup.asStateFlow()
+    private val _notificationEvents = MutableStateFlow(0)
+    val notificationEvents = _notificationEvents.asStateFlow()
+
+    fun sendTestNotification(): Boolean = notifications.sendTestNotification()
+    fun notificationsAllowed(): Boolean = notifications.areNotificationsAllowed()
     val typingActivities = typing.activity
     fun sendTypingAction(chatId: Long, typingNow: Boolean) = typing.sendTyping(chatId, typingNow)
     fun pruneTyping() = typing.prune()
@@ -219,7 +226,29 @@ class TdlibSession(private val context: Context) {
         }
     }
 
+    /**
+     * TDLib Notification API is disabled by default (group limit = 0).
+     * Without this SetOption request, UpdateNotificationGroup is never emitted.
+     * Configure on every authorized launch to support existing installations.
+     */
+    private fun enableTdlibNotificationApi() {
+        val active = client ?: return
+        _notificationSetup.value = "Enabling Telegram notification events…"
+        active.send(
+            TdApi.SetOption("notification_group_count_max", TdApi.OptionValueInteger(15))
+        ) { result ->
+            _notificationSetup.value = when (result) {
+                is TdApi.Ok -> "Telegram notification events enabled"
+                is TdApi.Error -> "TDLib notification setup failed (code ${result.code})"
+                else -> "TDLib notification setup returned an unexpected response"
+            }
+        }
+    }
+
     private fun onUpdate(obj: TdApi.Object) {
+        if (obj is TdApi.UpdateNotificationGroup) {
+            _notificationEvents.value = _notificationEvents.value + 1
+        }
         // Chat headers and message timelines share the same authorized TDLib client.
         fileStore.onUpdate(obj)
         messaging.onUpdate(obj)
@@ -305,6 +334,7 @@ class TdlibSession(private val context: Context) {
             is TdApi.AuthorizationStateReady -> {
                 _canResendCode.value = false
                 publishAuth(Auth.Ready)
+                enableTdlibNotificationApi()
                 request(TdApi.LoadChats(TdApi.ChatListMain(), 100), "Chat sync")
             }
             is TdApi.AuthorizationStateClosed -> {
@@ -314,6 +344,8 @@ class TdlibSession(private val context: Context) {
                 fileStore.clear()
                 synchronized(viewLock) { maxViewedByChat.clear() }
                 _outboxRead.value = emptyMap()
+                _notificationSetup.value = "Waiting for Telegram authorization"
+                _notificationEvents.value = 0
                 synchronized(known) {
                     known.clear()
                     missingTitleRefreshes.clear()
