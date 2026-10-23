@@ -31,6 +31,8 @@ import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.NotificationsActive
+import androidx.compose.material.icons.rounded.Call
+import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.animateColorAsState
@@ -234,6 +236,106 @@ private fun GlaciaApp(
     }
     val current = (liveChats + discovered + listOfNotNull(notificationTarget))
         .firstOrNull { it.id == openChatId }
+    var callHandoffPrompt by remember(current?.id) { mutableStateOf(false) }
+
+    // Runtime permissions are requested only after an explicit user action.
+    // No permission grant = no native call (and no remote ringing).
+    val deviceContext = LocalContext.current
+    var pendingNativeAction by remember { mutableStateOf<Pair<Long, Boolean>?>(null) }
+    val nativePermissions = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        val action = pendingNativeAction
+        pendingNativeAction = null
+        if (action != null && results.values.all { it } && results.isNotEmpty()) {
+            if (action.first == 0L) session.answerNativeCall()
+            else session.startNativeCall(action.first, action.second)
+        }
+    }
+    fun requestNativeAction(chatId: Long, video: Boolean) {
+        val permissions = if (video) {
+            arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA)
+        } else arrayOf(Manifest.permission.RECORD_AUDIO)
+        if (permissions.all {
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                deviceContext, it
+            ) == PackageManager.PERMISSION_GRANTED
+        }) {
+            if (chatId == 0L) session.answerNativeCall()
+            else session.startNativeCall(chatId, video)
+        } else {
+            pendingNativeAction = chatId to video
+            nativePermissions.launch(permissions)
+        }
+    }
+
+    // Android 12+ requires explicit consent before selecting a Bluetooth
+    // communication device. No headset permission is requested at startup.
+    val bluetoothPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) session.bluetoothNativeCall()
+    }
+    fun requestBluetoothAudio() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        if (androidx.core.content.ContextCompat.checkSelfPermission(
+                deviceContext, Manifest.permission.BLUETOOTH_CONNECT
+            ) == PackageManager.PERMISSION_GRANTED) {
+            session.bluetoothNativeCall()
+        } else bluetoothPermission.launch(Manifest.permission.BLUETOOTH_CONNECT)
+    }
+
+    val inAppCall by session.nativeCall.collectAsState()
+    val inAppCallNotice by session.nativeCallNotice.collectAsState()
+    inAppCallNotice?.let { notice ->
+        AlertDialog(
+            onDismissRequest = session::dismissNativeCallNotice,
+            title = { Text("Native calling") },
+            text = { Text(notice) },
+            confirmButton = {
+                TextButton(onClick = session::dismissNativeCallNotice) { Text("OK") }
+            }
+        )
+    }
+    // Phase 3.10: dialog-free Liquid Glass overlay. It is scoped to TDLib's
+    // actual active call; returning to chats cannot accidentally hang up.
+    inAppCall?.let { running ->
+        NativeCallScreen(
+            call = running,
+            remoteFrames = session.remoteCallFrames,
+            localFrames = session.localCallFrames,
+            onAnswer = { requestNativeAction(0L, running.video) },
+            onHangUp = session::hangupNativeCall,
+            onMute = { session.muteNativeCall(!running.muted) },
+            onSpeaker = { session.speakerNativeCall(!running.speaker) },
+            onBluetooth = { requestBluetoothAudio() },
+            onCameraSwitch = session::switchNativeCamera
+        )
+    }
+    if (callHandoffPrompt && current != null) {
+        AlertDialog(
+            onDismissRequest = { callHandoffPrompt = false },
+            title = { Text("Voice / video call") },
+            text = {
+                Text(
+                    "Native voice/video calling is disabled in this build (v" +
+                        BuildConfig.VERSION_NAME + "). To test experimental calls in GLACIA, " +
+                        "set glacia.experimentalNativeCalls=true in local.properties, " +
+                        "rebuild and reinstall the debug APK. " +
+                        "For now, open this contact in official Telegram to call there?"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    callHandoffPrompt = false
+                    session.openCallContact(current.id)
+                }) { Text("Open Telegram") }
+            },
+            dismissButton = {
+                TextButton(onClick = { callHandoffPrompt = false }) { Text("Cancel") }
+            }
+        )
+    }
     DisposableEffect(session, current?.id) {
         session.setVisibleChat(current?.id)
         onDispose { session.setVisibleChat(null) }
@@ -243,6 +345,7 @@ private fun GlaciaApp(
     val documentTransfers by session.documentTransfers.collectAsState()
     val messageErrors by session.messageErrors.collectAsState()
     val mediaBusy by session.mediaSending.collectAsState()
+    val actionPermissions by session.actionPermissions.collectAsState()
     val outboxRead by session.outboxRead.collectAsState()
     val typingByChat by session.typingActivities.collectAsState()
     val notificationSetup by session.notificationSetup.collectAsState()
@@ -274,6 +377,55 @@ private fun GlaciaApp(
         session.loadHistory(chatId)
         try { awaitCancellation() }
         finally { session.closeChat(chatId) }
+    }
+
+    // Phase 3.9: actual TDLib incoming 1:1 call invitation, not simulated ringing.
+    // This UI deliberately has no "Answer" button without a real media engine.
+    val incomingCall by session.incomingCall.collectAsState()
+    val decliningIncomingCall by session.decliningIncomingCall.collectAsState()
+    val incomingCallError by session.incomingCallError.collectAsState()
+    var ignoredCallId by remember { mutableIntStateOf(-1) }
+    var officialAppMissing by remember(incomingCall?.callId) { mutableStateOf(false) }
+    incomingCall?.let { ringing ->
+        if (!session.nativeCallingEnabled && resumed && ignoredCallId != ringing.callId) {
+            AlertDialog(
+                onDismissRequest = { ignoredCallId = ringing.callId },
+                title = {
+                    Text(if (ringing.video) "Incoming Telegram video call" else "Incoming Telegram voice call")
+                },
+                text = {
+                    Column {
+                        Text(
+                            "${ringing.callerName} is calling. GLACIA can decline this invitation, " +
+                                "but cannot answer until secure in-app voice/video transport is integrated. " +
+                                "To answer, open the official Telegram app."
+                        )
+                        incomingCallError?.let {
+                            Spacer(Modifier.height(8.dp))
+                            Text(it, color = MaterialTheme.colorScheme.error)
+                        }
+                        if (officialAppMissing) {
+                            Spacer(Modifier.height(8.dp))
+                            Text("Official Telegram isn't available on this device.")
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        if (!session.openOfficialTelegram()) officialAppMissing = true
+                    }) { Text("Open Telegram") }
+                },
+                dismissButton = {
+                    Row {
+                        TextButton(
+                            enabled = !decliningIncomingCall,
+                            onClick = { session.declineIncomingCall() }
+                        ) { Text(if (decliningIncomingCall) "Declining…" else "Decline") }
+                        TextButton(onClick = { ignoredCallId = ringing.callId }) { Text("Ignore") }
+                    }
+                }
+            )
+        }
     }
 
     BackHandler(enabled = current != null) { openChatId = null }
@@ -313,6 +465,22 @@ private fun GlaciaApp(
                                 color = if (typingNow) accent(dark) else mutedInk(dark),
                                 fontSize = 11.sp
                             )
+                        }
+                        if (!current.isGroup && session.nativeCallingEnabled) {
+                            IconButton(onClick = { requestNativeAction(current.id, false) }) {
+                                Icon(Icons.Rounded.Call, "Start native voice call", tint = accent(dark))
+                            }
+                            IconButton(onClick = { requestNativeAction(current.id, true) }) {
+                                Icon(Icons.Rounded.Videocam, "Start native video call", tint = accent(dark))
+                            }
+                        } else if (!current.isGroup) {
+                            IconButton(onClick = { callHandoffPrompt = true }) {
+                                Icon(
+                                    Icons.Rounded.Call,
+                                    "Open contact in Telegram for voice/video call",
+                                    tint = accent(dark)
+                                )
+                            }
                         }
                         val muted = chatMuteStates[current.id] == true
                         IconButton(
@@ -364,7 +532,22 @@ private fun GlaciaApp(
                         onTyping = { typing ->
                             session.sendTypingAction(current.id, typing)
                         },
-                        onSend = { text -> session.sendText(current.id, text) },
+                        onSend = { text, replyId -> session.sendText(current.id, text, replyId) },
+                        onEditMessage = { id, text -> session.editMessage(current.id, id, text) },
+                        onDeleteMessage = { id, everyone ->
+                            session.deleteMessage(current.id, id, everyone)
+                        },
+                        onReactToMessage = { id, emoji, chosen ->
+                            session.reactToMessage(current.id, id, emoji, chosen)
+                        },
+                        onForwardMessage = { id, toChat ->
+                            session.forwardMessage(current.id, id, toChat)
+                        },
+                        onLoadMessageProperties = { id ->
+                            session.loadMessageActions(current.id, id)
+                        },
+                        messageActionPermissions = actionPermissions,
+                        forwardTargets = liveChats,
                         onAttachment = { uri -> session.sendAttachment(current.id, uri) },
                         onVoice = { voice ->
                             session.sendVoice(current.id, voice.path, voice.durationSeconds, voice.opus)
@@ -801,15 +984,15 @@ private fun SettingsScreen(
             color = mutedInk(dark), fontSize = 12.sp
         )
         Spacer(Modifier.height(24.dp))
-        Text("GLACIA  •  v0.3.7", color = accent(dark),
+        Text("GLACIA  •  v0.3.9", color = accent(dark),
             fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp, fontSize = 11.sp)
         Spacer(Modifier.height(8.dp))
         Text("Experimental Telegram client", color = ink(dark),
             fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
         Spacer(Modifier.height(8.dp))
         Text(
-            "Available: real Telegram chats, text messaging, photos, files, video/audio " +
-                "playback, chat filters, Discover search, read checks, and live typing indicators.",
+            "Available: text and media messaging, OGG voice notes, message reply/edit/delete/" +
+                "forward/reactions, read receipts, search, notifications and typing indicators.",
             color = mutedInk(dark), fontSize = 13.sp, lineHeight = 20.sp
         )
         Spacer(Modifier.height(14.dp))
@@ -817,8 +1000,9 @@ private fun SettingsScreen(
             fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp, fontSize = 11.sp)
         Spacer(Modifier.height(7.dp))
         Text(
-            "Background push delivery is not available when the app process is stopped. " +
-                "Voice recording, attachment sending and full message search are pending.",
+            "Full in-app voice/video calling is not yet available (call button opens contact " +
+                "in official Telegram). Background push after force-stop, advanced search, " +
+                "and media upload cleanup still need work.",
             color = mutedInk(dark), fontSize = 13.sp, lineHeight = 20.sp
         )
     }

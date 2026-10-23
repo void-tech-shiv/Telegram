@@ -13,6 +13,8 @@ data class Chat(
     val photoFileId: Int? = null
 )
 
+data class MessageReactionSummary(val emoji: String, val count: Int, val chosen: Boolean)
+
 data class Message(
     val id: Long,
     val chatId: Long,
@@ -28,7 +30,10 @@ data class Message(
     val attachmentName: String? = null,
     val attachmentMime: String? = null,
     val playbackFileId: Int? = null,
-    val playbackDurationSeconds: Int = 0
+    val playbackDurationSeconds: Int = 0,
+    val replyToMessageId: Long? = null,
+    val edited: Boolean = false,
+    val reactions: List<MessageReactionSummary> = emptyList()
 )
 
 interface ChatRepository {

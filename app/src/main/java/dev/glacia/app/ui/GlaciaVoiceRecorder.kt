@@ -39,6 +39,7 @@ class GlaciaVoiceRecorder(private val context: Context) {
                 else MediaRecorder.AudioEncoder.AAC
             )
             rec.setAudioEncodingBitRate(if (opus) 32_000 else 64_000)
+            rec.setAudioChannels(1) // Telegram voice notes require single-channel OGG/Opus
             rec.setAudioSamplingRate(if (opus) 48_000 else 44_100)
             rec.setMaxDuration(60_000)
             rec.setOutputFile(file.absolutePath)

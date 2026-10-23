@@ -45,6 +45,7 @@ class TdlibMessages(
     }
 
     fun dismissError(chatId: Long) = error(chatId, null)
+    fun removeLocal(chatId: Long, ids: Collection<Long>) = delete(chatId, ids)
     /** Share TDLib send failures with the same in-chat error surface as text. */
     fun reportError(chatId: Long, message: String) = error(chatId, message)
     fun addOutgoing(message: TdApi.Message) =
@@ -94,7 +95,7 @@ class TdlibMessages(
         }
     }
 
-    fun sendText(chatId: Long, body: String) {
+    fun sendText(chatId: Long, body: String, replyToId: Long? = null) {
         val text = body.trim()
         if (text.isBlank() || text.length > 4096) {
             error(chatId, "Message must be between 1 and 4096 characters.")
@@ -110,6 +111,9 @@ class TdlibMessages(
         val input = TdApi.InputMessageText().apply { this.text = messageText }
         val function = TdApi.SendMessage().apply {
             this.chatId = chatId
+            if (replyToId != null && replyToId > 0) {
+                replyTo = TdApi.InputMessageReplyToMessage().apply { messageId = replyToId }
+            }
             this.inputMessageContent = input
         }
         active.send(function) { result ->
@@ -157,6 +161,21 @@ class TdlibMessages(
                     _messages.value = snapshots.toMap()
                 }
             }
+            is TdApi.UpdateMessageInteractionInfo -> synchronized(lock) {
+                val old = snapshots[update.chatId].orEmpty()
+                snapshots[update.chatId] = old.map {
+                    if (it.id == update.messageId) it.copy(
+                        reactions = reactionSummaries(update.interactionInfo)
+                    ) else it
+                }
+                _messages.value = snapshots.toMap()
+            }
+            is TdApi.UpdateMessageEdited -> synchronized(lock) {
+                snapshots[update.chatId] = snapshots[update.chatId].orEmpty().map {
+                    if (it.id == update.messageId) it.copy(edited = true) else it
+                }
+                _messages.value = snapshots.toMap()
+            }
             is TdApi.UpdateDeleteMessages -> delete(update.chatId, update.messageIds.toList())
         }
     }
@@ -188,9 +207,21 @@ class TdlibMessages(
             attachmentName = attachment?.fileName,
             attachmentMime = attachment?.mimeType,
             playbackFileId = originalPlayback?.id,
-            playbackDurationSeconds = playbackDuration(message.content)
+            playbackDurationSeconds = playbackDuration(message.content),
+            replyToMessageId = (message.replyTo as? TdApi.MessageReplyToMessage)
+                ?.messageId?.takeIf { it > 0L },
+            edited = message.editDate > 0,
+            reactions = reactionSummaries(message.interactionInfo)
         )
     }
+
+    private fun reactionSummaries(info: TdApi.MessageInteractionInfo?): List<MessageReactionSummary> =
+        info?.reactions?.reactions?.mapNotNull { reaction ->
+            val emoji = (reaction.type as? TdApi.ReactionTypeEmoji)?.emoji
+            emoji?.let {
+                MessageReactionSummary(it, reaction.totalCount, reaction.isChosen)
+            }
+        }.orEmpty()
 
     private fun mediaType(content: TdApi.MessageContent?): String? = when (content) {
         is TdApi.MessagePhoto -> "photo"
@@ -246,6 +277,7 @@ class TdlibMessages(
         is TdApi.MessagePoll -> "📊 Poll"
         is TdApi.MessageLocation -> "📍 Location"
         is TdApi.MessageContact -> "👤 Contact"
+        is TdApi.MessageCall -> if (content.isVideo) "📹 Video call" else "📞 Voice call"
         else -> "Unsupported message type"
     }
 }

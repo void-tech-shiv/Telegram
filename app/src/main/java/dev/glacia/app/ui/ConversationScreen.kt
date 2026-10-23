@@ -3,6 +3,8 @@ package dev.glacia.app.ui
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -52,6 +54,7 @@ import dev.glacia.app.data.DocumentKind
 import dev.glacia.app.data.FileTransfer
 import dev.glacia.app.data.Chat
 import dev.glacia.app.data.Message
+import dev.glacia.app.data.MessageActionPermissions
 import dev.glacia.app.data.DeliveryReceipts
 import dev.glacia.app.data.DeliveryState
 import kotlinx.coroutines.delay
@@ -99,6 +102,7 @@ private fun GlassImagePreview(
  * Live chat UI. Initial history, older pages and incoming messages come from TDLib.
  * Plain text can be sent; attachments are shown as descriptive placeholders only.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ConversationScreen(
     chat: Chat,
@@ -113,7 +117,14 @@ fun ConversationScreen(
     active: Boolean,
     onVisibleMessages: (List<Long>) -> Unit,
     onTyping: (Boolean) -> Unit,
-    onSend: (String) -> Unit,
+    onSend: (String, Long?) -> Unit,
+    onEditMessage: (Long, String) -> Unit,
+    onDeleteMessage: (Long, Boolean) -> Unit,
+    onReactToMessage: (Long, String, Boolean) -> Unit,
+    onForwardMessage: (Long, Long) -> Unit,
+    onLoadMessageProperties: (Long) -> Unit,
+    messageActionPermissions: Map<Pair<Long, Long>, MessageActionPermissions>,
+    forwardTargets: List<Chat>,
     onAttachment: (android.net.Uri) -> Unit,
     onVoice: (RecordedVoice) -> Unit,
     mediaBusy: Boolean,
@@ -129,6 +140,9 @@ fun ConversationScreen(
     var playingMedia by remember { mutableStateOf<Triple<String, Boolean, Int>?>(null) }
     var newestSeen by remember(chat.id) { mutableLongStateOf(Long.MIN_VALUE) }
     var draft by rememberSaveable(chat.id) { mutableStateOf("") }
+    var selectedMessage by remember(chat.id) { mutableStateOf<Message?>(null) }
+    var replyingTo by remember(chat.id) { mutableStateOf<Message?>(null) }
+    var editing by remember(chat.id) { mutableStateOf<Message?>(null) }
     val context = LocalContext.current
     val recorder = remember(chat.id) { GlaciaVoiceRecorder(context.applicationContext) }
     var recording by remember(chat.id) { mutableStateOf(false) }
@@ -226,9 +240,30 @@ fun ConversationScreen(
     fun send() {
         val text = draft.trim()
         if (text.isNotBlank() && text.length <= 4096) {
-            onSend(text)
+            val editId = editing?.id
+            if (editId != null) {
+                onEditMessage(editId, text)
+            } else {
+                onSend(text, replyingTo?.id)
+            }
             draft = ""
+            editing = null
+            replyingTo = null
         }
+    }
+    selectedMessage?.let { message ->
+        GlaciaMessageActionDialog(
+            message = message,
+            permissions = messageActionPermissions[chat.id to message.id],
+            chats = forwardTargets,
+            foreground = foreground,
+            onDismiss = { selectedMessage = null },
+            onReply = { replyingTo = message; editing = null },
+            onEdit = { editing = message; replyingTo = null; draft = message.text },
+            onForward = { destination -> onForwardMessage(message.id, destination) },
+            onDelete = { everyone -> onDeleteMessage(message.id, everyone) },
+            onReact = { emoji, chosen -> onReactToMessage(message.id, emoji, chosen) }
+        )
     }
 
     playingMedia?.let { (path, isVideo, seconds) ->
@@ -308,6 +343,13 @@ fun ConversationScreen(
                         Column(
                             bubbleWidth
                                 .clip(bubbleShape)
+                                .combinedClickable(
+                                    onClick = {},
+                                    onLongClick = {
+                                        selectedMessage = msg
+                                        onLoadMessageProperties(msg.id)
+                                    }
+                                )
                                 .animateContentSize()
                                 .background(
                                     brush = Brush.verticalGradient(
@@ -326,6 +368,22 @@ fun ConversationScreen(
                                 )
                                 .padding(horizontal = 12.dp, vertical = 11.dp)
                         ) {
+                            msg.replyToMessageId?.let { replyId ->
+                                val quoted = messages.firstOrNull { it.id == replyId }?.text
+                                    ?.take(85) ?: "Earlier message"
+                                Text(
+                                    "↩ $quoted",
+                                    color = highlight,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.fillMaxWidth()
+                                        .clip(RoundedCornerShape(9.dp))
+                                        .background(highlight.copy(alpha = 0.10f))
+                                        .padding(7.dp),
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Spacer(Modifier.height(7.dp))
+                            }
                             val thumbnailPath = msg.mediaFileId?.let(filePaths::get)
                             if (thumbnailPath != null && isVisual) {
                                 GlassImagePreview(
@@ -562,6 +620,28 @@ fun ConversationScreen(
                                     )
                                 }
                             }
+                            if (msg.reactions.isNotEmpty()) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                    modifier = Modifier.padding(top = 7.dp)
+                                ) {
+                                    msg.reactions.take(4).forEach { reaction ->
+                                        Text(
+                                            "${reaction.emoji} ${reaction.count}",
+                                            color = if (reaction.chosen) highlight else secondary,
+                                            fontSize = 12.sp,
+                                            modifier = Modifier.clip(RoundedCornerShape(12.dp))
+                                                .background(highlight.copy(alpha = 0.13f))
+                                                .clickable {
+                                                    onReactToMessage(
+                                                        msg.id, reaction.emoji, reaction.chosen
+                                                    )
+                                                }
+                                                .padding(horizontal = 6.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+                            }
                             Spacer(Modifier.height(5.dp))
                             val delivery = DeliveryReceipts.status(msg, lastReadOutboxId)
                             val trailing = when (delivery) {
@@ -572,7 +652,7 @@ fun ConversationScreen(
                                 DeliveryState.NONE -> ""
                             }
                             Text(
-                                msg.time + trailing,
+                                msg.time + (if (msg.edited) " • edited" else "") + trailing,
                                 color = when (delivery) {
                                     DeliveryState.FAILED -> Color(0xFFFF9E9E)
                                     DeliveryState.READ -> highlight
@@ -618,6 +698,28 @@ fun ConversationScreen(
             }
         }
 
+        if (replyingTo != null || editing != null) {
+            val target = editing ?: replyingTo
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 15.dp)
+                    .clip(RoundedCornerShape(15.dp))
+                    .background(highlight.copy(alpha = 0.13f))
+                    .padding(start = 12.dp, top = 4.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    (if (editing != null) "Editing: " else "Replying to: ") +
+                        target?.text.orEmpty().take(90),
+                    color = foreground, maxLines = 2,
+                    modifier = Modifier.weight(1f), fontSize = 12.sp
+                )
+                IconButton(onClick = {
+                    editing = null
+                    replyingTo = null
+                    draft = ""
+                }) { Icon(Icons.Rounded.Close, "Cancel edit or reply", tint = highlight) }
+            }
+        }
         if (recordError != null) {
             Text(
                 recordError!!,
