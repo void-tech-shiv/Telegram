@@ -2,6 +2,7 @@ package dev.glacia.app.data
 
 import android.content.Context
 import android.util.Log
+import android.os.SystemClock
 import dev.glacia.app.BuildConfig
 import io.github.pytgcalls.models.Frame
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -20,7 +21,9 @@ data class NativeCallUi(
     val peer: String = "Telegram contact",
     val muted: Boolean = false,
     val speaker: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    /** Monotonic clock, set only after real NTgCalls CONNECTED. */
+    val connectedAtElapsedMs: Long? = null
 )
 
 /**
@@ -43,6 +46,8 @@ class NativeCallController(
     fun dismissNotice() { _notice.value = null }
     private val _remoteFrames = MutableSharedFlow<Frame>(extraBufferCapacity = 2)
     val remoteFrames = _remoteFrames.asSharedFlow()
+    private val _localFrames = MutableSharedFlow<Frame>(extraBufferCapacity = 2)
+    val localFrames = _localFrames.asSharedFlow()
     private val lock = Any()
     private var tdCall: TdApi.Call? = null
     private var connectedCallId = 0
@@ -113,7 +118,8 @@ class NativeCallController(
                         },
                         peer = old?.peer ?: "Telegram contact",
                         muted = old?.muted ?: false, speaker = old?.speaker ?: false,
-                        error = old?.error
+                        error = old?.error,
+                        connectedAtElapsedMs = old?.connectedAtElapsedMs
                     )
                 }
                 if (state is TdApi.CallStateReady) {
@@ -248,6 +254,20 @@ class NativeCallController(
         }
     }
 
+    fun switchCamera() {
+        val id = _call.value?.takeIf { it.video && it.phase == "Connected" }?.callId
+            ?: return
+        worker.execute {
+            try {
+                if (media?.switchCamera() != true) {
+                    changeError(id, "A second camera isn't available on this device.")
+                }
+            } catch (_: Throwable) {
+                changeError(id, "Could not change camera. Video call remains active.")
+            }
+        }
+    }
+
     fun setSpeaker(speaker: Boolean) {
         val id = _call.value?.callId ?: return
         worker.execute {
@@ -291,6 +311,9 @@ class NativeCallController(
         },
         onRemoteFrame = { callId, frame ->
             if (synchronized(lock) { tdCall?.id == callId }) _remoteFrames.tryEmit(frame)
+        },
+        onLocalFrame = { callId, frame ->
+            if (synchronized(lock) { tdCall?.id == callId }) _localFrames.tryEmit(frame)
         }
     )
 
@@ -308,7 +331,13 @@ class NativeCallController(
 
     private fun changePhase(callId: Int, value: String) {
         synchronized(lock) {
-            _call.value = _call.value?.takeIf { it.callId == callId }?.copy(phase = value)
+            val old = _call.value?.takeIf { it.callId == callId } ?: return
+            _call.value = old.copy(
+                phase = value,
+                connectedAtElapsedMs = if (value == "Connected") {
+                    old.connectedAtElapsedMs ?: SystemClock.elapsedRealtime()
+                } else old.connectedAtElapsedMs
+            )
         }
     }
     private fun changeError(callId: Int, value: String) {
