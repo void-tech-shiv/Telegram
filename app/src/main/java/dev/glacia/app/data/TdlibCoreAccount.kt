@@ -204,6 +204,22 @@ class TdlibCoreAccount(
         }
     }
 
+    /** Telegram Saved Messages is the authenticated user's own private chat. */
+    fun openSavedMessages(onChat: (Long) -> Unit) {
+        val id = synchronized(lock) { selfId } ?: return
+        val active = client() ?: return
+        active.send(TdApi.CreatePrivateChat(id, false)) { result ->
+            when (result) {
+                is TdApi.Chat -> onChat(result.id)
+                is TdApi.Error -> synchronized(lock) {
+                    _state.value = _state.value.copy(
+                        notice = "Saved Messages unavailable (Telegram code ${result.code})."
+                    )
+                }
+            }
+        }
+    }
+
     fun openContact(personId: Long, onChat: (Long) -> Unit) {
         if (personId !in synchronized(lock) { contactIds }) return
         val active = client() ?: return
