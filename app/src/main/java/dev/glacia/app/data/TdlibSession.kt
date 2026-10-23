@@ -183,6 +183,14 @@ class TdlibSession(private val context: Context) {
         messaging.reportError(id, explanation)
     }
     fun openCallContact(chatId: Long) = calls.openContact(chatId)
+    fun openOfficialTelegram(): Boolean = calls.openOfficialApp()
+
+    // TDLib call invitations are observable; no native media engine is present.
+    private val callInbox = TdlibCallInbox { client }
+    val incomingCall = callInbox.incoming
+    val decliningIncomingCall = callInbox.declining
+    val incomingCallError = callInbox.error
+    fun declineIncomingCall() = callInbox.decline()
     val actionPermissions = messageActions.permissions
     fun loadMessageActions(chatId: Long, id: Long) = messageActions.properties(chatId, id)
     fun forwardMessage(fromChatId: Long, id: Long, toChatId: Long) =
@@ -402,6 +410,7 @@ class TdlibSession(private val context: Context) {
         // Chat headers and message timelines share the same authorized TDLib client.
         fileStore.onUpdate(obj)
         messaging.onUpdate(obj)
+        callInbox.onUpdate(obj)
         typing.onUpdate(obj)
         notifications.onUpdate(obj)
         when (obj) {
@@ -503,6 +512,7 @@ class TdlibSession(private val context: Context) {
             is TdApi.AuthorizationStateClosed -> {
                 messaging.clear()
                 messageActions.clear()
+                callInbox.clear()
                 discovery.clear()
                 typing.clear()
                 fileStore.clear()
@@ -603,6 +613,7 @@ class TdlibSession(private val context: Context) {
 
     fun close() {
         typing.clear()
+        callInbox.clear()
         client?.send(TdApi.Close()) { }
         client = null
     }
