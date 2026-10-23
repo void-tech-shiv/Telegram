@@ -125,6 +125,7 @@ private fun GlaciaApp(
     val current = liveChats.firstOrNull { it.id == openChatId }
     val messagesByChat by session.messages.collectAsState()
     val loadingChats by session.historyLoading.collectAsState()
+    val documentTransfers by session.documentTransfers.collectAsState()
     val messageErrors by session.messageErrors.collectAsState()
     LaunchedEffect(current?.id) {
         current?.let { session.loadHistory(it.id) }
@@ -185,6 +186,8 @@ private fun GlaciaApp(
                         chat = current,
                         messages = messagesByChat[current.id].orEmpty(),
                         filePaths = photoPaths,
+                        documentTransfers = documentTransfers,
+                        onDownloadDocument = { session.requestDocumentDownload(it) },
                         loading = current.id in loadingChats,
                         error = messageErrors[current.id],
                         dark = dark,
