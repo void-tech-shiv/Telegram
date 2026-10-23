@@ -197,7 +197,10 @@ class TdlibMessages(
         is TdApi.MessageVoiceNote -> "🎤 Voice message"
         is TdApi.MessageVideoNote -> "🎬 Video message"
         is TdApi.MessageAudio -> "🎵 Audio"
-        is TdApi.MessageDocument -> "📄 Document"
+        is TdApi.MessageDocument -> {
+            val name = content.document?.fileName.orEmpty().trim().take(72)
+            if (name.isBlank()) "📄 Document" else "📄 $name"
+        }
         is TdApi.MessageSticker -> "🎨 Sticker"
         is TdApi.MessagePoll -> "📊 Poll"
         is TdApi.MessageLocation -> "📍 Location"
