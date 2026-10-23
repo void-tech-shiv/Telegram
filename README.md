@@ -2,7 +2,18 @@
 
 Independent Android Telegram client developed in **Kotlin + Jetpack Compose + TDLib**. Midnight Glass and Frosted Daylight themes, TDLib Telegram session, real chats/messaging, images/documents, Media3 video/voice playback, Discover search, unread filters, read receipts and typing indicators.
 
-## Current developer build: v0.3.10 (Phase 3.9 — first increment)
+## Experimental developer build: v0.3.11 (Phase 3.9 — native voice/video work)
+
+**Branch:** `feature/phase-3-9-native-media-bootstrap` · **Status:** unverified experimental calling; keep draft. **Normal builds keep calling disabled and use external official Telegram handoff.**
+
+### Native media integration (EXPERIMENTAL)
+- Adds NTgCalls 3.0.0/WebRTC for true microphone capture, speaker playback, optional camera capture and remote-frame rendering.
+- Adds real outgoing/incoming TDLib CreateCall/AcceptCall and native encrypted media/signaling connection work.
+- Requires local Gradle `-Pglacia.experimentalNativeCalls=true`, microphone/camera permissions, real phone testing.
+- **Build passing ≠ two-way calls verified**; no production claims until remote audio/video is demonstrated on two actual accounts and security/device QA passes.
+- See `docs/PHASE3_9_NATIVE.md` for testing requirements and safe build commands.
+
+## Previous developer build: v0.3.10 (Phase 3.9 — incoming-call foundation)
 
 **Branch:** `feature/phase-3-9-incoming-call-foundation` · **Status:** experimental draft, not merged or production certified.
 
@@ -38,8 +49,8 @@ Independent Android Telegram client developed in **Kotlin + Jetpack Compose + TD
 ```powershell
 cd D:\telegram\Telegram
 git fetch origin
-git switch --track origin/feature/phase-3-9-incoming-call-foundation
-.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest
+git switch --track origin/feature/phase-3-9-native-media-bootstrap
+.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest -Pglacia.experimentalNativeCalls=true
 ```
 
 If you already have the branch, switch to it and pull `--ff-only`. Keep `telegram.apiId` and `telegram.apiHash` in root `local.properties`; don't commit credentials. Run the locally built APK over the existing GLACIA installation to retain your TDLib login data. Public CI APK cannot sign in because it contains placeholder credentials.
