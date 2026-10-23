@@ -2,7 +2,20 @@
 
 Independent Android Telegram client developed in **Kotlin + Jetpack Compose + TDLib**. Midnight Glass and Frosted Daylight themes, TDLib Telegram session, real chats/messaging, images/documents, Media3 video/voice playback, Discover search, unread filters, read receipts and typing indicators.
 
-## Experimental UI build: v0.3.24 (compact Nicegram-inspired chats)
+## Experimental UI build: v0.3.25 (core Telegram reference screens)
+
+**Branch:** `feature/phase-4-6-nicegram-core-screens` · **Draft PR #30** · Android live QA required.
+
+Based on the user-provided Nicegram screenshots: compact **Settings**, large
+Telegram **Profile** with Set Photo/Edit Info/Settings, dense real **Contacts**
+with live online/last-seen, a functional **GLACIA** hub (not crypto or fake
+premium buttons) and the existing five-item bottom navigation. Settings
+categories route to real account, notifications, appearance, folders, privacy,
+devices and diagnostics. The chat/calling backend remains unchanged.
+See `docs/GLACIA_NICEGRAM_CORE_SCREENS.md` for screenshots-to-feature mapping,
+Windows build commands, CI/phone acceptance checks and truthful limitations.
+
+## Previous experimental UI build: v0.3.24 (compact Nicegram-inspired chats)
 
 **Branch:** `fix/nicegram-inspired-compact-core-ui` · **Status:** draft PR;
 physical-device UI QA required.

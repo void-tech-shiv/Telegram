@@ -51,6 +51,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -219,6 +220,10 @@ private fun GlaciaApp(
 ) {
     val hazeState = rememberHazeState()
     val coreScope = rememberCoroutineScope()
+    val uriHandler = LocalUriHandler.current
+    var settingsPage by rememberSaveable { mutableStateOf("Home") }
+    var profileEditing by rememberSaveable { mutableStateOf(false) }
+    var hubSearching by rememberSaveable { mutableStateOf(false) }
     var tab by rememberSaveable { mutableStateOf("Chats") }
     var openChatId by rememberSaveable { mutableStateOf<Long?>(null) }
     var query by rememberSaveable { mutableStateOf("") }
@@ -288,6 +293,10 @@ private fun GlaciaApp(
     LaunchedEffect(tab) {
         if (tab == "Contacts" || tab == "Settings" || tab == "Profile")
             session.refreshCoreAccount()
+    }
+    LaunchedEffect(tab, settingsPage) {
+        if (tab == "Settings" && settingsPage in setOf("Privacy", "Devices"))
+            session.refreshCoreSecurity()
     }
     LaunchedEffect(notificationChatId, notificationTarget?.id, liveChats) {
         val id = notificationChatId ?: return@LaunchedEffect
@@ -518,6 +527,15 @@ private fun GlaciaApp(
     }
 
     BackHandler(enabled = current != null) { openChatId = null }
+    BackHandler(enabled = current == null &&
+        (profileEditing || (tab == "Discover" && hubSearching) ||
+            (tab == "Settings" && settingsPage != "Home"))) {
+        when {
+            profileEditing -> profileEditing = false
+            tab == "Discover" && hubSearching -> hubSearching = false
+            tab == "Settings" -> settingsPage = "Home"
+        }
+    }
 
     // Capture only the smooth aurora layer for Haze, never the scrollable content.
     // This prevents recursive backdrop capture and rectangle-shaped blur artifacts.
@@ -727,15 +745,15 @@ private fun GlaciaApp(
                             dark = dark,
                             onOpen = { openChatId = it.id }
                         )
-                        "Contacts" -> CoreContactsScreen(
+                        "Contacts" -> CompactContactsHome(
                             state = coreAccount,
-                            filePaths = photoPaths,
+                            paths = photoPaths,
                             dark = dark,
                             onRefresh = session::refreshCoreAccount,
-                            onAddContact = session::addTelegramContact,
-                            onRemoveContact = session::removeTelegramContact,
+                            onAdd = session::addTelegramContact,
+                            onRemove = session::removeTelegramContact,
                             onDismissNotice = session::clearAccountNotice,
-                            onOpenSavedMessages = {
+                            onSaved = {
                                 session.openSavedMessages { chatId ->
                                     coreScope.launch {
                                         session.ensureChat(chatId)
@@ -744,7 +762,7 @@ private fun GlaciaApp(
                                     }
                                 }
                             },
-                            onOpenContact = { userId ->
+                            onOpen = { userId ->
                                 session.openContactChat(userId) { chatId ->
                                     coreScope.launch {
                                         session.ensureChat(chatId)
@@ -754,54 +772,170 @@ private fun GlaciaApp(
                                 }
                             }
                         )
-                        "Profile" -> Column(
-                            Modifier.fillMaxSize().verticalScroll(rememberScrollState())
-                                .padding(horizontal = 18.dp, vertical = 20.dp)
-                        ) {
-                            Text("Profile", color = ink(dark), fontSize = 28.sp,
-                                fontWeight = FontWeight.Bold)
-                            Spacer(Modifier.height(16.dp))
-                            CoreProfileSection(
-                                state = coreAccount,
-                                filePaths = photoPaths,
-                                dark = dark,
-                                onRefresh = session::refreshCoreAccount,
-                                onSave = session::updateOwnProfile,
-                                onSaveUsername = session::updateOwnUsername,
-                                onSavePhoto = session::updateOwnPhoto,
-                                onDismissNotice = session::clearAccountNotice
-                            )
-                        }
-                        "Discover" -> TelegramDiscoverScreen(
+                        "Profile" -> if (profileEditing) {
+                            Column(
+                                Modifier.fillMaxSize().background(coreSurface(dark))
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(horizontal = 16.dp)
+                            ) {
+                                CompactPageHeader("Edit Profile", dark) {
+                                    profileEditing = false
+                                }
+                                CoreProfileSection(
+                                    state = coreAccount,
+                                    filePaths = photoPaths, dark = dark,
+                                    onRefresh = session::refreshCoreAccount,
+                                    onSave = session::updateOwnProfile,
+                                    onSaveUsername = session::updateOwnUsername,
+                                    onSavePhoto = session::updateOwnPhoto,
+                                    onDismissNotice = session::clearAccountNotice
+                                )
+                            }
+                        } else CompactProfileHome(
                             dark = dark,
-                            photoPaths = photoPaths,
-                            matches = discovered,
-                            loading = discovering,
-                            error = discoveryError,
-                            query = discoverQuery,
-                            onQueryChange = { discoverQuery = it },
-                            onSearch = { session.searchTelegramChats(it) },
-                            onOpen = { openChatId = it.id }
+                            account = coreAccount,
+                            paths = photoPaths,
+                            onEdit = { profileEditing = true },
+                            onSettings = {
+                                settingsPage = "Home"
+                                tab = "Settings"
+                            },
+                            onRefresh = session::refreshCoreAccount,
+                            onSavePhoto = session::updateOwnPhoto
                         )
-                        else -> SettingsScreen(
-                            selectedTheme, dark, onThemeChange,
-                            coreAccount, photoPaths,
-                            session::refreshCoreAccount,
-                            session::updateOwnProfile,
-                            session::updateOwnUsername,
-                            session::updateOwnPhoto,
-                            session::clearAccountNotice,
-                            session::logoutThisDevice,
-                            coreSecurity,
-                            session::refreshCoreSecurity,
-                            session::terminateOtherTelegramSession,
-                            session::unblockTelegramUser,
-                            session::updatePrivacyRule,
-                            notificationPermission, onNotificationPermission,
-                            onTestNotification, onOpenNotificationSettings,
-                            notificationSetup, notificationEvents, notificationHealth,
-                            pushStatus
+                        "Discover" -> if (hubSearching) {
+                            Column(Modifier.fillMaxSize().background(coreSurface(dark))) {
+                                CompactPageHeader("Discover Telegram", dark) {
+                                    hubSearching = false
+                                }
+                                Box(Modifier.weight(1f)) {
+                                    TelegramDiscoverScreen(
+                                        dark = dark, photoPaths = photoPaths,
+                                        matches = discovered, loading = discovering,
+                                        error = discoveryError, query = discoverQuery,
+                                        onQueryChange = { discoverQuery = it },
+                                        onSearch = { session.searchTelegramChats(it) },
+                                        onOpen = { openChatId = it.id }
+                                    )
+                                }
+                            }
+                        } else CompactHubHome(
+                            dark = dark,
+                            onDiscover = { hubSearching = true },
+                            onSaved = {
+                                session.openSavedMessages { chatId ->
+                                    coreScope.launch {
+                                        session.ensureChat(chatId)
+                                        openChatId = chatId
+                                        tab = "Chats"
+                                    }
+                                }
+                            },
+                            onContacts = { tab = "Contacts" },
+                            onFolders = { showFolderManagement = true },
+                            onGroup = { showCreateCommunity = true },
+                            onSecurity = {
+                                settingsPage = "Privacy"
+                                tab = "Settings"
+                            },
+                            onProfile = { tab = "Profile" },
+                            onLogout = session::logoutThisDevice
                         )
+                        else -> when (settingsPage) {
+                            "Home" -> CompactSettingsHome(
+                                dark = dark,
+                                account = coreAccount,
+                                paths = photoPaths,
+                                onProfile = { tab = "Profile" },
+                                onAccount = { settingsPage = "Account" },
+                                onAppearance = { settingsPage = "Appearance" },
+                                onPrivacy = { settingsPage = "Privacy" },
+                                onNotifications = { settingsPage = "Notifications" },
+                                onFolders = { showFolderManagement = true },
+                                onDevices = { settingsPage = "Devices" },
+                                onAdvanced = { settingsPage = "Advanced" },
+                                onHelp = {
+                                    runCatching { uriHandler.openUri("https://telegram.org/faq") }
+                                }
+                            )
+                            "Appearance" -> CompactAppearancePage(
+                                selected = selectedTheme, dark = dark,
+                                onBack = { settingsPage = "Home" },
+                                onSelect = onThemeChange
+                            )
+                            "Notifications" -> CompactNotificationPage(
+                                dark = dark,
+                                permissionGranted = notificationPermission,
+                                onBack = { settingsPage = "Home" },
+                                onAskPermission = onNotificationPermission,
+                                onAndroidSettings = onOpenNotificationSettings,
+                                onTestNotification = onTestNotification,
+                                pushStatus = pushStatus
+                            )
+                            "Account" -> Column(
+                                Modifier.fillMaxSize().background(coreSurface(dark))
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(horizontal = 15.dp)
+                            ) {
+                                CompactPageHeader("Account", dark) { settingsPage = "Home" }
+                                CoreProfileSection(
+                                    state = coreAccount, filePaths = photoPaths,
+                                    dark = dark,
+                                    onRefresh = session::refreshCoreAccount,
+                                    onSave = session::updateOwnProfile,
+                                    onSaveUsername = session::updateOwnUsername,
+                                    onSavePhoto = session::updateOwnPhoto,
+                                    onDismissNotice = session::clearAccountNotice
+                                )
+                            }
+                            "Privacy", "Devices" -> Column(
+                                Modifier.fillMaxSize().background(coreSurface(dark))
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(horizontal = 15.dp)
+                            ) {
+                                CompactPageHeader(
+                                    if (settingsPage == "Devices") "Devices"
+                                    else "Privacy & Security", dark
+                                ) { settingsPage = "Home" }
+                                CompactMenuGroup(dark) {
+                                    Column(Modifier.padding(15.dp)) {
+                                        CoreSecuritySection(
+                                            state = coreSecurity,
+                                            onRefresh = session::refreshCoreSecurity,
+                                            onTerminate = session::terminateOtherTelegramSession,
+                                            onUnblock = session::unblockTelegramUser,
+                                            onPrivacyChange = session::updatePrivacyRule
+                                        )
+                                    }
+                                }
+                            }
+                            else -> Column(Modifier.fillMaxSize()) {
+                                CompactPageHeader("Advanced settings", dark) {
+                                    settingsPage = "Home"
+                                }
+                                Box(Modifier.weight(1f)) {
+                                    SettingsScreen(
+                                        selectedTheme, dark, onThemeChange,
+                                        coreAccount, photoPaths,
+                                        session::refreshCoreAccount,
+                                        session::updateOwnProfile,
+                                        session::updateOwnUsername,
+                                        session::updateOwnPhoto,
+                                        session::clearAccountNotice,
+                                        session::logoutThisDevice,
+                                        coreSecurity,
+                                        session::refreshCoreSecurity,
+                                        session::terminateOtherTelegramSession,
+                                        session::unblockTelegramUser,
+                                        session::updatePrivacyRule,
+                                        notificationPermission, onNotificationPermission,
+                                        onTestNotification, onOpenNotificationSettings,
+                                        notificationSetup, notificationEvents,
+                                        notificationHealth, pushStatus
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
