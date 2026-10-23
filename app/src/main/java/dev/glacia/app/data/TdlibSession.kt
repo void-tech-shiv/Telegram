@@ -769,6 +769,22 @@ class TdlibSession(private val context: Context) {
         }
     }
 
+    /** Accurate device-local Telegram chat timestamp (no fabricated labels). */
+    private fun chatListTime(unixSeconds: Int): String {
+        if (unixSeconds <= 0) return ""
+        val whenSent = java.time.Instant.ofEpochSecond(unixSeconds.toLong())
+            .atZone(java.time.ZoneId.systemDefault())
+        val today = java.time.LocalDate.now()
+        return when {
+            whenSent.toLocalDate() == today ->
+                whenSent.format(java.time.format.DateTimeFormatter.ofPattern("h:mm a"))
+            whenSent.toLocalDate() == today.minusDays(1) -> "Yesterday"
+            whenSent.toLocalDate().isAfter(today.minusDays(7)) ->
+                whenSent.format(java.time.format.DateTimeFormatter.ofPattern("EEE"))
+            else -> whenSent.format(java.time.format.DateTimeFormatter.ofPattern("d MMM"))
+        }
+    }
+
     private fun emitChats() {
         fun mapChat(chat: TdApi.Chat, archived: Boolean, pinned: Boolean): Chat {
             val preview = when (val content = chat.lastMessage?.content) {
@@ -794,7 +810,7 @@ class TdlibSession(private val context: Context) {
                 title = fallbackChatTitle(chat),
                 username = "",
                 preview = preview,
-                time = "",
+                time = chatListTime(chat.lastMessage?.date ?: 0),
                 unread = chat.unreadCount,
                 isGroup = chat.type is TdApi.ChatTypeBasicGroup ||
                     chat.type is TdApi.ChatTypeSupergroup,
