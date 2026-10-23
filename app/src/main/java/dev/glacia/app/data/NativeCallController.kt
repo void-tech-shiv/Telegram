@@ -1,6 +1,7 @@
 package dev.glacia.app.data
 
 import android.content.Context
+import android.util.Log
 import dev.glacia.app.BuildConfig
 import io.github.pytgcalls.models.Frame
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -47,6 +48,11 @@ class NativeCallController(
     private var connectedCallId = 0
     private var generation = 0L
     private var media: NativeCallMedia? = null
+    // Encrypted TDLib signaling may arrive before CallStateReady / NTgCalls.
+    // Strictly bounded in-memory buffers; cleared on hangup/logout, never logged.
+    private val pendingSignaling = ArrayDeque<ByteArray>()
+    private val maxBufferedPackets = 32
+    private val maxPacketBytes = 65536
     private val appContext = context.applicationContext
 
     fun onUpdate(update: TdApi.Object) {
@@ -61,9 +67,22 @@ class NativeCallController(
                     val shouldStop = synchronized(lock) {
                         if (tdCall?.id != call.id) false
                         else {
+                            val prior = _call.value
+                            if (state is TdApi.CallStateError) {
+                                _notice.value = "Telegram call error (code ${state.error.code})."
+                                Log.w("GLACIA-VoIP", "tdlib_call_error code=${state.error.code}")
+                            } else if (state is TdApi.CallStateDiscarded &&
+                                prior != null && prior.phase != "Connected" &&
+                                prior.phase != "Incoming" && prior.phase != "Ringing…"
+                            ) {
+                                _notice.value = "Call ended during setup. " +
+                                    "Check the GLACIA-VoIP diagnostic in Android Studio Logcat."
+                                Log.i("GLACIA-VoIP", "tdlib_call_ended_during_setup")
+                            }
                             generation++
                             tdCall = null
                             connectedCallId = 0
+                            pendingSignaling.clear()
                             _call.value = null
                             true
                         }
@@ -105,9 +124,19 @@ class NativeCallController(
                         try {
                             val activeMedia = media ?: engine().also { media = it }
                             activeMedia.connect(call, state)
-                            if (stillActive(call.id, gen)) changePhase(call.id, "Connecting…")
-                        } catch (_: Throwable) {
-                            changeError(call.id, "Native media connection failed. Call ended safely.")
+                            flushPendingSignaling(call.id, gen)
+                            if (stillActive(call.id, gen) && _call.value?.phase != "Connected") {
+                                changePhase(call.id, "Connecting…")
+                            }
+                        } catch (failure: Throwable) {
+                            val stage = (failure as? NativeCallSetupFailure)?.stage ?: "media_start"
+                            Log.w(
+                                "GLACIA-VoIP",
+                                "call_setup_error stage=$stage type=${failure.javaClass.simpleName}"
+                            )
+                            _notice.value = "Native call setup failed at $stage. " +
+                                "Check the GLACIA-VoIP Logcat filter."
+                            changeError(call.id, "Media setup failed at $stage.")
                             discard(call.id, call.isVideo)
                         }
                     }
@@ -115,8 +144,36 @@ class NativeCallController(
                 if (state is TdApi.CallStatePending) resolvePeer(call.id, call.userId)
             }
             is TdApi.UpdateNewCallSignalingData -> {
-                val allowed = synchronized(lock) { tdCall?.id == update.callId }
-                if (allowed) worker.execute { runCatching { media?.receiveSignaling(update.data) } }
+                // Updates can arrive *before* native createP2pCall and connectP2p.
+                // Previously this called media?.receiveSignaling(...) and silently
+                // dropped the first ICE handshake packet, severing the call.
+                val gen: Long
+                synchronized(lock) {
+                    if (tdCall?.id != update.callId) return
+                    gen = generation
+                    if (update.data.isEmpty() || update.data.size > maxPacketBytes) return
+                    if (pendingSignaling.size == maxBufferedPackets) pendingSignaling.removeFirst()
+                    pendingSignaling.addLast(update.data.copyOf())
+                }
+                worker.execute { flushPendingSignaling(update.callId, gen) }
+            }
+        }
+    }
+
+    private fun flushPendingSignaling(callId: Int, gen: Long) {
+        if (!stillActive(callId, gen)) return
+        val transport = media?.takeIf { it.canReceiveSignaling() } ?: return
+        while (stillActive(callId, gen)) {
+            val packet = synchronized(lock) { pendingSignaling.removeFirstOrNull() } ?: break
+            try {
+                transport.receiveSignaling(packet)
+            } catch (failure: Throwable) {
+                // Do not print packet contents or native exception messages.
+                Log.w("GLACIA-VoIP", "signal_delivery_error type=${failure.javaClass.simpleName}")
+                changeError(callId, "Encrypted signaling delivery failed.")
+                break
+            } finally {
+                packet.fill(0)
             }
         }
     }
@@ -200,26 +257,39 @@ class NativeCallController(
 
     private fun engine(): NativeCallMedia = NativeCallMedia(
         appContext,
-        onSignaling = { data ->
-            val id = synchronized(lock) { tdCall?.id }
-            if (id != null) client()?.send(TdApi.SendCallSignalingData(id, data)) { reply ->
-                if (reply is TdApi.Error) changeError(id, "Telegram signaling error (code ${reply.code}).")
-            }
-        },
-        onConnection = { state ->
-            val id = synchronized(lock) { tdCall?.id }
-            if (id != null) {
-                when (state.uppercase()) {
-                    "CONNECTED" -> changePhase(id, "Connected")
-                    "DISCONNECTED", "FAILED", "CLOSED" -> {
-                        changeError(id, "Native media disconnected.")
-                        discard(id, synchronized(lock) { tdCall?.isVideo } ?: false)
+        onSignaling = { callId, data ->
+            // Prevent callbacks from an ended call being sent on a newer call.
+            if (synchronized(lock) { tdCall?.id == callId }) {
+                client()?.send(TdApi.SendCallSignalingData(callId, data)) { reply ->
+                    if (reply is TdApi.Error) {
+                        Log.w("GLACIA-VoIP", "outbound_signaling_error code=${reply.code}")
+                        changeError(callId, "Telegram signaling error (code ${reply.code}).")
                     }
-                    else -> changePhase(id, state.replace('_', ' ').take(35))
                 }
             }
         },
-        onRemoteFrame = { frame -> _remoteFrames.tryEmit(frame) }
+        onConnection = { callId, state ->
+            if (synchronized(lock) { tdCall?.id == callId }) {
+                Log.i("GLACIA-VoIP", "connection_state=${state.take(35)}")
+                when (state.uppercase()) {
+                    "CONNECTED" -> changePhase(callId, "Connected")
+                    "DISCONNECTED" -> {
+                        // ICE routes can disconnect transiently during negotiation.
+                        // Do NOT unconditionally DiscardCall here.
+                        changePhase(callId, "Reconnecting…")
+                    }
+                    "FAILED", "CLOSED" -> {
+                        changeError(callId, "Native media failed ($state). Try another network.")
+                        changePhase(callId, "Connection failed")
+                        // Keep Hang up available, let TDLib own final call lifecycle.
+                    }
+                    else -> changePhase(callId, state.replace('_', ' ').take(35))
+                }
+            }
+        },
+        onRemoteFrame = { callId, frame ->
+            if (synchronized(lock) { tdCall?.id == callId }) _remoteFrames.tryEmit(frame)
+        }
     )
 
     private fun prepareProtocol(): TdApi.CallProtocol? = try {
@@ -260,6 +330,7 @@ class NativeCallController(
             generation++
             connectedCallId = 0
             tdCall = null
+            pendingSignaling.clear()
             _call.value = null
             _notice.value = null
         }
