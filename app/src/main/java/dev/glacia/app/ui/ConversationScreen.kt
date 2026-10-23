@@ -13,6 +13,8 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Send
+import androidx.compose.material.icons.rounded.InsertDriveFile
+import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -21,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -100,15 +103,15 @@ fun ConversationScreen(
                         horizontalArrangement =
                             if (msg.outgoing) Arrangement.End else Arrangement.Start
                     ) {
-                        // A single shared bubble shape prevents sharp rectangular seams
-                        // where clipped media cards meet the rounded message border.
-                        val bubbleShape = RoundedCornerShape(
-                            topStart = 21.dp, topEnd = 21.dp,
-                            bottomStart = if (msg.outgoing) 21.dp else 6.dp,
-                            bottomEnd = if (msg.outgoing) 6.dp else 21.dp
-                        )
+                        val isVisual = msg.mediaType == "photo" || msg.mediaType == "video"
+                        val bubbleShape = RoundedCornerShape(22.dp)
+                        val bubbleWidth = if (isVisual) {
+                            Modifier.fillMaxWidth(0.80f).widthIn(max = 278.dp)
+                        } else {
+                            Modifier.widthIn(max = 304.dp)
+                        }
                         Column(
-                            Modifier.widthIn(max = if (msg.mediaType != null) 278.dp else 304.dp)
+                            bubbleWidth
                                 .clip(bubbleShape)
                                 .background(
                                     if (msg.outgoing) {
@@ -124,31 +127,88 @@ fun ConversationScreen(
                                 .padding(horizontal = 12.dp, vertical = 11.dp)
                         ) {
                             val thumbnailPath = msg.mediaFileId?.let(filePaths::get)
-                            if (thumbnailPath != null) {
-                                AsyncImage(
-                                    model = File(thumbnailPath),
-                                    contentDescription = msg.mediaType?.let { "$it thumbnail" },
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxWidth()
-                                        .height(if (msg.mediaType == "video") 148.dp else 170.dp)
-                                        .clip(RoundedCornerShape(15.dp))
-                                )
-                                Spacer(Modifier.height(8.dp))
-                            } else if (msg.mediaType != null) {
+                            if (thumbnailPath != null && isVisual) {
+                                Box(
+                                    Modifier.fillMaxWidth()
+                                        .height(if (msg.mediaType == "video") 155.dp else 175.dp)
+                                        .clip(RoundedCornerShape(16.dp))
+                                ) {
+                                    AsyncImage(
+                                        model = File(thumbnailPath),
+                                        contentDescription = "${msg.mediaType} thumbnail preview",
+                                        contentScale = if (msg.mediaType == "photo")
+                                            ContentScale.Fit else ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                    if (msg.mediaType == "video") {
+                                        Row(
+                                            Modifier.align(Alignment.BottomStart)
+                                                .padding(8.dp)
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .background(Color(0xD916223C))
+                                                .padding(horizontal = 9.dp, vertical = 5.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                Icons.Rounded.Videocam,
+                                                contentDescription = null,
+                                                tint = Color.White,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                            Spacer(Modifier.width(4.dp))
+                                            Text("Preview only", color = Color.White, fontSize = 10.sp)
+                                        }
+                                    }
+                                }
+                                Spacer(Modifier.height(9.dp))
+                            } else if (isVisual) {
                                 Text(
-                                    "Loading media preview…",
+                                    "Preview unavailable",
                                     color = secondary,
                                     fontSize = 12.sp
                                 )
-                                Spacer(Modifier.height(4.dp))
+                                Spacer(Modifier.height(5.dp))
                             }
-                            Text(
-                                msg.text,
-                                color = foreground,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontSize = 15.sp,
-                                lineHeight = 21.sp
-                            )
+                            if (msg.mediaType == "document") {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(highlight.copy(alpha = 0.13f))
+                                        .padding(horizontal = 10.dp, vertical = 10.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.InsertDriveFile,
+                                        contentDescription = null,
+                                        tint = highlight,
+                                        modifier = Modifier.size(29.dp)
+                                    )
+                                    Spacer(Modifier.width(9.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            msg.text.removePrefix("📄 ").ifBlank { "Document" },
+                                            color = foreground,
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 13.sp,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            "File opening not available yet",
+                                            color = secondary,
+                                            fontSize = 10.sp
+                                        )
+                                    }
+                                }
+                            } else {
+                                Text(
+                                    msg.text,
+                                    color = foreground,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontSize = 15.sp,
+                                    lineHeight = 21.sp
+                                )
+                            }
                             Spacer(Modifier.height(5.dp))
                             Text(
                                 msg.time + when {
