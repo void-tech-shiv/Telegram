@@ -89,6 +89,13 @@ class TdlibSession(private val context: Context) {
     fun refreshCoreSecurity() = coreSecurity.refresh()
     fun unblockTelegramUser(userId: Long) = coreSecurity.unblock(userId)
     fun blockTelegramUser(userId: Long) = coreSecurity.block(userId)
+    fun blockTelegramPrivateChat(chatId: Long) {
+        client?.send(TdApi.GetChat(chatId)) { response ->
+            val userId = (response as? TdApi.Chat)?.type
+                .let { it as? TdApi.ChatTypePrivate }?.userId ?: return@send
+            coreSecurity.block(userId)
+        }
+    }
     fun terminateOtherTelegramSession(sessionId: Long) = coreSecurity.terminateOtherDevice(sessionId)
     private val communities = TdlibCoreCommunities { client }
     val communityState = communities.state
