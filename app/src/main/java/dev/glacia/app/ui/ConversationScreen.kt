@@ -135,6 +135,7 @@ fun ConversationScreen(
     onVoice: (RecordedVoice) -> Unit,
     expressions: ExpressionState,
     onRefreshExpressions: () -> Unit,
+    onLoadStickerPack: (Long) -> Unit,
     onSendExpression: (ExpressionOption, Long?) -> Unit,
     mediaBusy: Boolean,
     onLoadMore: () -> Unit,
@@ -375,6 +376,7 @@ fun ConversationScreen(
             filePaths = filePaths,
             dark = dark,
             onReload = onRefreshExpressions,
+            onLoadPack = onLoadStickerPack,
             onSend = { item ->
                 if (active && !mediaBusy) {
                     onSendExpression(item, replyingTo?.id)
