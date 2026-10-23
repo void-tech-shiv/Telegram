@@ -11,3 +11,7 @@ captures/
 *.aab
 .env
 api-credentials.properties
+
+# Firebase project configuration: keep local while testing credentials.
+# Firebase client JSON is not a server secret but can identify a private project.
+**/google-services.json
