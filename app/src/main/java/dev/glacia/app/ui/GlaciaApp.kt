@@ -224,6 +224,9 @@ private fun GlaciaApp(
     var discoverQuery by rememberSaveable { mutableStateOf("") }
     var chatFilter by rememberSaveable { mutableStateOf(ChatFilter.ALL) }
     var viewingArchive by rememberSaveable { mutableStateOf(false) }
+    var viewingFolderId by rememberSaveable { mutableStateOf<Int?>(null) }
+    val folders by session.folderTabs.collectAsState()
+    val chatsByFolder by session.folderChats.collectAsState()
     val archivedChats by session.archivedChats.collectAsState()
     val chatActionBusy by session.chatActionBusy.collectAsState()
     val chatActionError by session.chatActionError.collectAsState()
@@ -662,7 +665,11 @@ private fun GlaciaApp(
                 } else {
                     when (tab) {
                         "Chats" -> ChatList(
-                            chats = if (viewingArchive) archivedChats else liveChats,
+                            chats = when {
+                                viewingArchive -> archivedChats
+                                viewingFolderId != null -> chatsByFolder[viewingFolderId].orEmpty()
+                                else -> liveChats
+                            },
                             photoPaths = photoPaths,
                             query = query,
                             onQuery = { query = it },
@@ -670,8 +677,18 @@ private fun GlaciaApp(
                             onFilter = { chatFilter = it },
                             archivedCount = archivedChats.size,
                             viewingArchive = viewingArchive,
+                            folders = folders,
+                            viewingFolderId = viewingFolderId,
+                            onFolder = { id ->
+                                viewingFolderId = id
+                                viewingArchive = false
+                                chatFilter = ChatFilter.ALL
+                                query = ""
+                                if (id != null) session.loadTelegramFolder(id)
+                            },
                             onArchiveViewChange = {
                                 viewingArchive = it
+                                viewingFolderId = null
                                 chatFilter = ChatFilter.ALL
                                 query = ""
                                 if (it) session.loadArchivedChats()
@@ -821,6 +838,9 @@ private fun ChatList(
     onFilter: (ChatFilter) -> Unit,
     archivedCount: Int,
     viewingArchive: Boolean,
+    folders: List<TdlibSession.ChatFolderTab>,
+    viewingFolderId: Int?,
+    onFolder: (Int?) -> Unit,
     onArchiveViewChange: (Boolean) -> Unit,
     busyChats: Set<Long>,
     actionError: String?,
@@ -841,7 +861,12 @@ private fun ChatList(
     ) {
         item {
             Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp)) {
-                Text(if (viewingArchive) "Archived conversations" else "Your conversations",
+                Text(when {
+                    viewingArchive -> "Archived conversations"
+                    viewingFolderId != null ->
+                        folders.firstOrNull { it.id == viewingFolderId }?.title ?: "Telegram folder"
+                    else -> "Your conversations"
+                },
                     fontSize = 26.sp, fontWeight = FontWeight.Bold, color = ink(dark), maxLines = 2)
                 Spacer(Modifier.height(5.dp))
                 Text("All your chats, with a little more magic.",
@@ -890,6 +915,22 @@ private fun ChatList(
                         onClick = { onArchiveViewChange(true) },
                         label = { Text("Archived ($archivedCount)") }
                     )
+                }
+                if (folders.isNotEmpty()) {
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(7.dp)
+                    ) {
+                        folders.forEach { folder ->
+                            FilterChip(
+                                selected = viewingFolderId == folder.id,
+                                onClick = {
+                                    onFolder(if (viewingFolderId == folder.id) null else folder.id)
+                                },
+                                label = { Text(folder.title.take(16)) }
+                            )
+                        }
+                    }
                 }
                 actionError?.let { error ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
