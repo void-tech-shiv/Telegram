@@ -71,6 +71,9 @@ class TdlibCoreAccount(
         }
         val epoch: Long
         synchronized(lock) {
+            // A screen/tab refresh must not cancel SetName -> SetBio while
+            // the user is saving their Telegram profile.
+            if (_state.value.busy) return
             epoch = ++generation
             _state.value = _state.value.copy(contactsLoading = true)
             // Preserve any visible profile-save notice until explicitly
