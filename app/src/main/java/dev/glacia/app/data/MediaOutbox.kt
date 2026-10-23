@@ -87,7 +87,11 @@ class MediaOutbox(
                     .substringAfterLast('/').substringAfterLast('\\')
                     .replace(Regex("[^a-zA-Z0-9_.-]"), "_")
                     .takeLast(75).ifBlank { "attachment" }
-                file = File(outbox, "${UUID.randomUUID()}_$safeName")
+                // Preserve original filename for the recipient without collisions.
+                // Each transfer lives in a unique private subdirectory.
+                val transferDir = File(outbox, UUID.randomUUID().toString())
+                    .apply { mkdirs() }
+                file = File(transferDir, safeName)
                 var transferred = 0L
                 context.contentResolver.openInputStream(uri)?.use { input ->
                     file!!.outputStream().use { output ->
