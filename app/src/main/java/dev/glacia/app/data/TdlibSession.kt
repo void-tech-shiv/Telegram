@@ -37,6 +37,14 @@ class TdlibSession(private val context: Context) {
     val chats = _chats.asStateFlow()
     private val known = linkedMapOf<Long, TdApi.Chat>()
     private var client: Client? = null
+    private val messaging = TdlibMessages { client }
+    val messages = messaging.messages
+    val historyLoading = messaging.loading
+    val messageErrors = messaging.errors
+
+    fun loadHistory(chatId: Long, beforeId: Long = 0L) = messaging.loadHistory(chatId, beforeId)
+    fun sendText(chatId: Long, text: String) = messaging.sendText(chatId, text)
+    fun dismissMessageError(chatId: Long) = messaging.dismissError(chatId)
 
     @Synchronized fun start() {
         if (client != null) return
@@ -99,6 +107,8 @@ class TdlibSession(private val context: Context) {
     }
 
     private fun onUpdate(obj: TdApi.Object) {
+        // Chat headers and message timelines share the same authorized TDLib client.
+        messaging.onUpdate(obj)
         when (obj) {
             is TdApi.UpdateAuthorizationState -> onAuth(obj.authorizationState)
             is TdApi.UpdateNewChat -> {
@@ -155,6 +165,7 @@ class TdlibSession(private val context: Context) {
                 request(TdApi.LoadChats(TdApi.ChatListMain(), 100), "Chat sync")
             }
             is TdApi.AuthorizationStateClosed -> {
+                messaging.clear()
                 client = null
                 _auth.value = Auth.Starting
             }
