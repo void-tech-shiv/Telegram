@@ -50,10 +50,10 @@ class TdlibDiscovery(
             }
             return
         }
-        active.send(TdApi.SearchChats(query, 30)) { reply ->
+        active.send(TdApi.SearchChats(query, null, 30)) { reply ->
             handleMatches(active, token, reply)
         }
-        active.send(TdApi.SearchPublicChats(query)) { reply ->
+        active.send(TdApi.SearchPublicChats(query, null)) { reply ->
             handleMatches(active, token, reply)
         }
     }
@@ -80,7 +80,8 @@ class TdlibDiscovery(
                             },
                             time = "",
                             unread = obj.unreadCount,
-                            isGroup = obj.type !is TdApi.ChatTypePrivate,
+                            isGroup = obj.type is TdApi.ChatTypeBasicGroup ||
+                                obj.type is TdApi.ChatTypeSupergroup,
                             photoFileId = obj.photo?.small?.id
                         )
                         synchronized(lock) {
