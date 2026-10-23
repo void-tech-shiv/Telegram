@@ -95,7 +95,7 @@ class TdlibCoreSecurity(private val client: () -> Client?) {
         else -> null
     }
 
-    private fun defaultRuleLabel(rules: Array<TdApi.UserPrivacySettingRule>): String {
+    private fun defaultRuleLabel(rules: Array<out TdApi.UserPrivacySettingRule>): String {
         val base = rules.firstOrNull {
             it is TdApi.UserPrivacySettingRuleAllowAll ||
                 it is TdApi.UserPrivacySettingRuleAllowContacts ||
