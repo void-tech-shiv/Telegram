@@ -214,7 +214,9 @@ fun ConversationScreen(
                 state = timelineState,
                 modifier = Modifier.fillMaxSize().clipToBounds(),
                 contentPadding = PaddingValues(horizontal = 17.dp, vertical = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                // Keep short conversations anchored near the composer, like a messenger.
+                // Long histories still scroll normally without reversed message ordering.
+                verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.Bottom)
             ) {
                 item {
                     Column(
