@@ -1,5 +1,6 @@
 package dev.glacia.app.ui
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
@@ -14,6 +15,15 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Send
+import androidx.compose.material.icons.rounded.AttachFile
+import androidx.compose.material.icons.rounded.StopCircle
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.SystemClock
 import androidx.compose.material.icons.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material.icons.rounded.Download
@@ -29,6 +39,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.TextStyle
@@ -41,6 +52,9 @@ import dev.glacia.app.data.DocumentKind
 import dev.glacia.app.data.FileTransfer
 import dev.glacia.app.data.Chat
 import dev.glacia.app.data.Message
+import dev.glacia.app.data.DeliveryReceipts
+import dev.glacia.app.data.DeliveryState
+import kotlinx.coroutines.delay
 import coil3.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
 import java.io.File
@@ -95,7 +109,14 @@ fun ConversationScreen(
     loading: Boolean,
     error: String?,
     dark: Boolean,
+    lastReadOutboxId: Long,
+    active: Boolean,
+    onVisibleMessages: (List<Long>) -> Unit,
+    onTyping: (Boolean) -> Unit,
     onSend: (String) -> Unit,
+    onAttachment: (android.net.Uri) -> Unit,
+    onVoice: (RecordedVoice) -> Unit,
+    mediaBusy: Boolean,
     onLoadMore: () -> Unit,
     onDismissError: () -> Unit
 ) {
@@ -108,13 +129,98 @@ fun ConversationScreen(
     var playingMedia by remember { mutableStateOf<Triple<String, Boolean, Int>?>(null) }
     var newestSeen by remember(chat.id) { mutableLongStateOf(Long.MIN_VALUE) }
     var draft by rememberSaveable(chat.id) { mutableStateOf("") }
+    val context = LocalContext.current
+    val recorder = remember(chat.id) { GlaciaVoiceRecorder(context.applicationContext) }
+    var recording by remember(chat.id) { mutableStateOf(false) }
+    var recordStartedAt by remember(chat.id) { mutableLongStateOf(0L) }
+    var recordSeconds by remember(chat.id) { mutableIntStateOf(0) }
+    var recordError by remember(chat.id) { mutableStateOf<String?>(null) }
+    val chooseFile = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri -> if (uri != null && !mediaBusy) onAttachment(uri) }
+    fun startRecording() {
+        if (!active || mediaBusy || recording) return
+        recordError = null
+        recording = recorder.start()
+        if (recording) {
+            recordStartedAt = SystemClock.elapsedRealtime()
+        } else {
+            recordError = "Microphone unavailable or recording format unsupported."
+        }
+    }
+    val microphone = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) startRecording()
+        else recordError = "Microphone permission is required to record a voice note."
+    }
+    LaunchedEffect(recording) {
+        while (recording) {
+            recordSeconds = ((SystemClock.elapsedRealtime() - recordStartedAt) / 1000L)
+                .toInt().coerceAtLeast(0)
+            delay(250)
+        }
+    }
+    LaunchedEffect(active) {
+        if (!active && recording) {
+            recorder.discard()
+            recording = false
+        }
+    }
+    DisposableEffect(recorder) { onDispose { recorder.discard() } }
 
-    // Adding an older history page should not jump the conversation back to bottom.
+    // Report typing at most once every four seconds. Cancel on Send, leaving
+    // the chat, or moving the app to background. No drafts are logged or stored.
+    LaunchedEffect(chat.id, active, draft.isNotBlank()) {
+        if (!active || draft.isBlank()) return@LaunchedEffect
+        var started = false
+        try {
+            delay(450)
+            while (true) {
+                onTyping(true)
+                started = true
+                delay(4_000)
+            }
+        } finally {
+            if (started) onTyping(false)
+        }
+    }
+
+    // Only report genuinely visible, incoming messages; never mark the entire
+    // loaded history as read when opening a conversation.
+    val visibleIncoming by remember(chat.id, messages) {
+        derivedStateOf {
+            val layout = timelineState.layoutInfo
+            layout.visibleItemsInfo.mapNotNull { item ->
+                val id = item.key as? Long ?: return@mapNotNull null
+                val visiblePixels = (
+                    minOf(item.offset + item.size, layout.viewportEndOffset) -
+                        maxOf(item.offset, layout.viewportStartOffset)
+                ).coerceAtLeast(0)
+                if (visiblePixels * 2 < item.size) return@mapNotNull null
+                id.takeIf { key ->
+                    key > 0L && messages.any { it.id == key && !it.outgoing }
+                }
+            }.distinct().take(25)
+        }
+    }
+    LaunchedEffect(chat.id, active, visibleIncoming) {
+        if (active && visibleIncoming.isNotEmpty()) {
+            delay(320)
+            onVisibleMessages(visibleIncoming)
+        }
+    }
+
+    // Initially show the latest message. Don't yank the list to the bottom
+    // when a new message arrives while the user is reading older history.
     LaunchedEffect(chat.id, messages.lastOrNull()?.id) {
         val newest = messages.lastOrNull()?.id ?: return@LaunchedEffect
         if (newestSeen != newest) {
+            val initial = newestSeen == Long.MIN_VALUE
+            val nearBottom = timelineState.layoutInfo.visibleItemsInfo
+                .lastOrNull()?.index?.let { it >= messages.size - 3 } ?: true
             newestSeen = newest
-            timelineState.scrollToItem(messages.size)
+            if (initial || nearBottom) timelineState.scrollToItem(messages.size)
         }
     }
     fun send() {
@@ -161,7 +267,9 @@ fun ConversationScreen(
                 state = timelineState,
                 modifier = Modifier.fillMaxSize().clipToBounds(),
                 contentPadding = PaddingValues(horizontal = 17.dp, vertical = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                // Keep short conversations anchored near the composer, like a messenger.
+                // Long histories still scroll normally without reversed message ordering.
+                verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.Bottom)
             ) {
                 item {
                     Column(
@@ -187,7 +295,11 @@ fun ConversationScreen(
                         val isVisual = msg.mediaType == "photo" || msg.mediaType == "video"
                         val imageDocument = msg.mediaType == "document" &&
                             DocumentKind.isImage(msg.attachmentMime, msg.attachmentName)
-                        val bubbleShape = RoundedCornerShape(22.dp)
+                        val bubbleShape = RoundedCornerShape(
+                            topStart = 22.dp, topEnd = 22.dp,
+                            bottomStart = if (msg.outgoing) 22.dp else 7.dp,
+                            bottomEnd = if (msg.outgoing) 7.dp else 22.dp
+                        )
                         val bubbleWidth = if (isVisual || imageDocument) {
                             Modifier.fillMaxWidth(0.80f).widthIn(max = 278.dp)
                         } else {
@@ -196,12 +308,17 @@ fun ConversationScreen(
                         Column(
                             bubbleWidth
                                 .clip(bubbleShape)
+                                .animateContentSize()
                                 .background(
-                                    if (msg.outgoing) {
-                                        if (dark) Color(0xD83D5E90) else Color(0xDED6E1FF)
-                                    } else {
-                                        if (dark) Color(0xEA1D2B4B) else Color(0xF0FFFFFF)
-                                    }
+                                    brush = Brush.verticalGradient(
+                                        if (msg.outgoing) {
+                                            if (dark) listOf(Color(0xEC426797), Color(0xD82A466F))
+                                            else listOf(Color(0xEFE9EEFF), Color(0xD8CEDCFF))
+                                        } else {
+                                            if (dark) listOf(Color(0xE629395B), Color(0xEA19243D))
+                                            else listOf(Color(0xFAFFFFFF), Color(0xE3EAF1FE))
+                                        }
+                                    )
                                 )
                                 .border(
                                     1.dp, Color.White.copy(alpha = if (dark) 0.13f else 0.55f),
@@ -233,7 +350,7 @@ fun ConversationScreen(
                                             modifier = Modifier.size(15.dp)
                                         )
                                         Spacer(Modifier.width(4.dp))
-                                        Text("Video preview only", color = foreground, fontSize = 10.sp)
+                                        Text("Video thumbnail", color = foreground, fontSize = 10.sp)
                                     }
                                 }
                                 Spacer(Modifier.height(7.dp))
@@ -425,22 +542,42 @@ fun ConversationScreen(
                                     }
                                 }
                             } else if (msg.mediaType != "voice" && msg.mediaType != "audio") {
-                                Text(
-                                    msg.text,
-                                    color = foreground,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontSize = 15.sp,
-                                    lineHeight = 21.sp
-                                )
+                                // Media already has a visual preview and a dedicated action.
+                                // Show its actual caption, but avoid duplicating the "Photo"
+                                // or "Video" placeholder beneath the media controls.
+                                val displayText = when (msg.mediaType) {
+                                    "photo" -> msg.text.removePrefix("📷 Photo")
+                                        .removePrefix(" · ").trim()
+                                    "video" -> msg.text.removePrefix("🎥 Video")
+                                        .removePrefix(" · ").trim()
+                                    else -> msg.text
+                                }
+                                if (displayText.isNotEmpty()) {
+                                    Text(
+                                        displayText,
+                                        color = foreground,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontSize = 15.sp,
+                                        lineHeight = 21.sp
+                                    )
+                                }
                             }
                             Spacer(Modifier.height(5.dp))
+                            val delivery = DeliveryReceipts.status(msg, lastReadOutboxId)
+                            val trailing = when (delivery) {
+                                DeliveryState.FAILED -> "  • Failed"
+                                DeliveryState.SENDING -> "  • Sending"
+                                DeliveryState.SENT -> "  ✓"
+                                DeliveryState.READ -> "  ✓✓"
+                                DeliveryState.NONE -> ""
+                            }
                             Text(
-                                msg.time + when {
-                                    msg.failed -> "  • Failed"
-                                    msg.sending -> "  • Sending"
-                                    else -> ""
+                                msg.time + trailing,
+                                color = when (delivery) {
+                                    DeliveryState.FAILED -> Color(0xFFFF9E9E)
+                                    DeliveryState.READ -> highlight
+                                    else -> secondary
                                 },
-                                color = if (msg.failed) Color(0xFFFF9E9E) else secondary,
                                 fontSize = 10.sp,
                                 modifier = Modifier.align(Alignment.End)
                             )
@@ -481,6 +618,14 @@ fun ConversationScreen(
             }
         }
 
+        if (recordError != null) {
+            Text(
+                recordError!!,
+                color = Color(0xFFFFB0B0),
+                fontSize = 12.sp,
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 3.dp)
+            )
+        }
         Row(
             Modifier.fillMaxWidth()
                 .padding(start = 13.dp, end = 13.dp, top = 6.dp, bottom = 10.dp)
@@ -490,6 +635,32 @@ fun ConversationScreen(
                 .padding(start = 18.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            IconButton(
+                onClick = { chooseFile.launch(arrayOf("*/*")) },
+                enabled = active && !mediaBusy && !recording,
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(Icons.Rounded.AttachFile, "Send photo, video or document", tint = highlight)
+            }
+            Spacer(Modifier.width(5.dp))
+            if (recording) {
+                Text(
+                    "● REC ${recordSeconds}s",
+                    color = Color(0xFFFFA2AE),
+                    fontSize = 13.sp,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = {
+                    recorder.discard()
+                    recording = false
+                }) { Icon(Icons.Rounded.DeleteOutline, "Discard recording", tint = secondary) }
+                IconButton(onClick = {
+                    val recorded = recorder.finish()
+                    recording = false
+                    if (recorded == null) recordError = "Recording too short or unavailable."
+                    else onVoice(recorded)
+                }) { Icon(Icons.Rounded.StopCircle, "Stop and send voice note", tint = highlight) }
+            } else {
             Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                 if (draft.isEmpty()) {
                     Text("Message", color = secondary)
@@ -505,15 +676,27 @@ fun ConversationScreen(
                     keyboardActions = KeyboardActions(onSend = { send() })
                 )
             }
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(6.dp))
+            if (draft.isBlank()) {
+                IconButton(
+                    enabled = active && !mediaBusy,
+                    onClick = {
+                        if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
+                            PackageManager.PERMISSION_GRANTED) {
+                            startRecording()
+                        } else microphone.launch(Manifest.permission.RECORD_AUDIO)
+                    }
+                ) { Icon(Icons.Rounded.Mic, "Record voice note", tint = highlight) }
+            }
             IconButton(
                 onClick = { send() },
-                enabled = draft.isNotBlank(),
+                enabled = draft.isNotBlank() && !mediaBusy,
                 modifier = Modifier.clip(CircleShape)
                     .background(highlight.copy(alpha = 0.17f))
             ) {
                 Icon(Icons.Rounded.Send, contentDescription = "Send Telegram message",
                     tint = if (draft.isNotBlank()) highlight else secondary)
+            }
             }
         }
     }
