@@ -130,7 +130,11 @@ class TdlibMessageSearch(private val client: () -> Client?) {
     }
     fun clearAll() {
         synchronized(lock) {
-            generations.clear()
+            // Do not reset generations to zero. An old TDLib callback from
+            // before logout must never match a new search after re-login.
+            generations.keys.toList().forEach { id ->
+                generations[id] = (generations[id] ?: 0) + 1
+            }
             _results.value = emptyMap()
         }
     }
