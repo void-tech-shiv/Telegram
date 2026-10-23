@@ -3,6 +3,7 @@ package dev.glacia.app.data
 import android.content.Context
 import android.os.Build
 import android.os.SystemClock
+import dev.glacia.app.calls.IncomingCallAlerts
 import dev.glacia.app.BuildConfig
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -76,6 +77,7 @@ class TdlibSession(private val context: Context) {
     private val discovery = TdlibDiscovery({ client }, fileStore)
     private val typing = TdlibTyping { client }
     private val notifications = GlaciaNotifications(context)
+    private val incomingCallAlerts = IncomingCallAlerts(context)
     private val _notificationSetup = MutableStateFlow("Waiting for Telegram authorization")
     val notificationSetup = _notificationSetup.asStateFlow()
     private val _notificationEvents = MutableStateFlow(0)
@@ -167,7 +169,10 @@ class TdlibSession(private val context: Context) {
     val typingActivities = typing.activity
     fun sendTypingAction(chatId: Long, typingNow: Boolean) = typing.sendTyping(chatId, typingNow)
     fun pruneTyping() = typing.prune()
-    fun setAppForeground(foreground: Boolean) = notifications.setForeground(foreground)
+    fun setAppForeground(foreground: Boolean) {
+        notifications.setForeground(foreground)
+        incomingCallAlerts.setForeground(foreground)
+    }
     fun setVisibleChat(chatId: Long?) = notifications.setVisibleChat(chatId)
     val discoveryResults = discovery.results
     val discoveryLoading = discovery.loading
@@ -426,6 +431,7 @@ class TdlibSession(private val context: Context) {
         messaging.onUpdate(obj)
         callInbox.onUpdate(obj)
         nativeCalls.onUpdate(obj)
+        if (nativeCallingEnabled) incomingCallAlerts.onUpdate(obj)
         typing.onUpdate(obj)
         notifications.onUpdate(obj)
         when (obj) {
@@ -631,6 +637,7 @@ class TdlibSession(private val context: Context) {
         typing.clear()
         callInbox.clear()
         nativeCalls.clear()
+        incomingCallAlerts.clear()
         client?.send(TdApi.Close()) { }
         client = null
     }
