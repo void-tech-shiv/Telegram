@@ -197,6 +197,10 @@ private fun GlaciaApp(
     val discovering by session.discoveryLoading.collectAsState()
     val discoveryError by session.discoveryError.collectAsState()
     val current = (liveChats + discovered).firstOrNull { it.id == openChatId }
+    DisposableEffect(session, current?.id) {
+        session.setVisibleChat(current?.id)
+        onDispose { session.setVisibleChat(null) }
+    }
     val messagesByChat by session.messages.collectAsState()
     val loadingChats by session.historyLoading.collectAsState()
     val documentTransfers by session.documentTransfers.collectAsState()
