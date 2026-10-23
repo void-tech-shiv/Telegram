@@ -2,6 +2,7 @@ package dev.glacia.app.data
 
 import android.content.Context
 import android.media.AudioManager
+import android.util.Log
 import io.github.pytgcalls.NTgCalls
 import io.github.pytgcalls.media.AudioDescription
 import io.github.pytgcalls.models.Frame
@@ -23,6 +24,13 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * EXPERIMENTAL: device/ABI/interoperability certification has not happened.
  */
+/**
+ * Sanitized stage-only diagnostic. Do not expose native exception messages:
+ * these may contain call configuration, ICE secrets, or endpoints.
+ */
+internal class NativeCallSetupFailure(val stage: String, cause: Throwable) :
+    IllegalStateException("Native call failed at $stage", cause)
+
 internal class NativeCallMedia(
     private val context: Context,
     private val onSignaling: (ByteArray) -> Unit,
@@ -35,6 +43,17 @@ internal class NativeCallMedia(
     private val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private var originalMode = AudioManager.MODE_NORMAL
     private var routed = false
+    private var connected = false
+    private inline fun <T> step(name: String, action: () -> T): T {
+        Log.i("GLACIA-VoIP", "media_stage=$name")
+        return try { action() }
+        catch (failure: Throwable) {
+            Log.w("GLACIA-VoIP", "media_stage_failed=$name type=${failure.javaClass.simpleName}")
+            throw NativeCallSetupFailure(name, failure)
+        }
+    }
+
+    fun isMediaConnected(): Boolean = connected
 
     fun protocol(): TdApi.CallProtocol {
         ensureWebRtcContext()
@@ -64,7 +83,11 @@ internal class NativeCallMedia(
             if (id == mediaUserId && bytes != null && bytes.isNotEmpty()) onSignaling(bytes)
         }
         instance.onConnectionChange { id, info ->
-            if (id == mediaUserId) onConnection(info.state.name)
+            if (id == mediaUserId) {
+                val currentState = info.state.name
+                connected = currentState.equals("CONNECTED", ignoreCase = true)
+                onConnection(currentState)
+            }
         }
         instance.onFrames { id, mode, device, frames ->
             if (id == mediaUserId && mode == StreamMode.PLAYBACK && device == StreamDevice.CAMERA) {
@@ -73,12 +96,12 @@ internal class NativeCallMedia(
         }
 
         // Allow TDLib to conduct Diffie-Hellman. Native media uses its resulting key.
-        instance.createP2pCall(call.userId)
+        step("create_p2p") { instance.createP2pCall(call.userId) }
         val mic = AudioDescription(MediaSource.DEVICE, 48000, 2, "{\"is_microphone\":true}", true)
         val speaker = AudioDescription(MediaSource.DEVICE, 48000, 2, "{\"is_microphone\":false}", true)
         // DEVICE capture transmits camera frames; EXTERNAL playback exposes decoded
         // remote I420 frames through the frame callback for rendering in Compose.
-        val camera = if (call.isVideo) {
+        val camera = if (call.isVideo) step("camera_enumeration") {
             val device = NTgCalls.getMediaDevices().camera.firstOrNull()
                 ?: error("No camera available for native video calling.")
             VideoDescription(MediaSource.DEVICE, 640, 480, 24, device.metadata, true)
@@ -86,18 +109,28 @@ internal class NativeCallMedia(
         val remoteVideo = if (call.isVideo) {
             VideoDescription(MediaSource.EXTERNAL, 0, 0, 0, "", false)
         } else null
-        instance.setStreamSources(call.userId, StreamMode.CAPTURE, MediaDescription(mic, null, camera, null))
-        instance.setStreamSources(call.userId, StreamMode.PLAYBACK, MediaDescription(null, speaker, remoteVideo, null))
-        instance.skipExchange(call.userId, ready.encryptionKey, call.isOutgoing)
+        step("audio_capture") {
+            instance.setStreamSources(call.userId, StreamMode.CAPTURE, MediaDescription(mic, null, camera, null))
+        }
+        step("audio_playback") {
+            instance.setStreamSources(call.userId, StreamMode.PLAYBACK, MediaDescription(null, speaker, remoteVideo, null))
+        }
+        step("key_exchange") { instance.skipExchange(call.userId, ready.encryptionKey, call.isOutgoing) }
         val mapped = ready.servers.mapNotNull(::toRtcServer)
         check(mapped.isNotEmpty()) { "Telegram did not provide usable call servers." }
-        instance.connectP2p(
-            call.userId, mapped, ready.protocol.libraryVersions.toList(),
-            ready.allowP2p, ready.customParameters
-        )
-        originalMode = audio.mode
-        audio.mode = AudioManager.MODE_IN_COMMUNICATION
-        routed = true
+        // Set communication mode before starting media, not afterwards.
+        step("audio_routing") {
+            originalMode = audio.mode
+            audio.mode = AudioManager.MODE_IN_COMMUNICATION
+            routed = true
+        }
+        step("ice_connect") {
+            instance.connectP2p(
+                call.userId, mapped, ready.protocol.libraryVersions.toList(),
+                ready.allowP2p, ready.customParameters
+            )
+        }
+        Log.i("GLACIA-VoIP", "media_setup_complete")
     }
 
     private fun toRtcServer(s: TdApi.CallServer): RTCServer? {
@@ -133,6 +166,7 @@ internal class NativeCallMedia(
         mediaUserId = 0L
         if (userId != 0L) runCatching { native?.stop(userId) }
         native = null
+        connected = false
         if (routed) {
             routed = false
             @Suppress("DEPRECATION")
