@@ -2,6 +2,7 @@ package dev.glacia.app.data
 
 import android.content.Context
 import android.os.Build
+import android.os.SystemClock
 import dev.glacia.app.BuildConfig
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,11 +34,42 @@ class TdlibSession(private val context: Context) {
     private val _notice = MutableStateFlow<String?>(null)
     val notice = _notice.asStateFlow()
     fun dismissNotice() { _notice.value = null }
+
+    // TDLib callbacks can arrive AFTER a newer authorization state update.
+    // In-flight request bookkeeping prevents duplicate taps and stale errors.
+    private val authorizationLock = Any()
+    private var authorizationGeneration = 0L
+    private var pendingAuthRequest: String? = null
+    private val _authBusy = MutableStateFlow(false)
+    val authBusy = _authBusy.asStateFlow()
+
+    private val _canResendCode = MutableStateFlow(false)
+    val canResendCode = _canResendCode.asStateFlow()
+    // Monotonic timestamp; no clock/timezone dependency.
+    private val _resendCodeAfterMs = MutableStateFlow(0L)
+    val resendCodeAfterMs = _resendCodeAfterMs.asStateFlow()
+
+    private fun publishAuth(state: Auth) {
+        synchronized(authorizationLock) {
+            if (_auth.value != state) {
+                authorizationGeneration++
+                pendingAuthRequest = null
+                _authBusy.value = false
+                _notice.value = null
+            }
+            _auth.value = state
+        }
+    }
     private val _chats = MutableStateFlow<List<Chat>>(emptyList())
     val chats = _chats.asStateFlow()
     private val known = linkedMapOf<Long, TdApi.Chat>()
+    private val missingTitleRefreshes = mutableSetOf<Long>()
     private var client: Client? = null
-    private val messaging = TdlibMessages { client }
+    private val fileStore = TdlibFileStore { client }
+    val filePaths = fileStore.paths
+    val documentTransfers = fileStore.transfers
+    fun requestDocumentDownload(fileId: Int) = fileStore.requestDocument(fileId)
+    private val messaging = TdlibMessages({ client }, fileStore)
     val messages = messaging.messages
     val historyLoading = messaging.loading
     val messageErrors = messaging.errors
@@ -49,17 +81,17 @@ class TdlibSession(private val context: Context) {
     @Synchronized fun start() {
         if (client != null) return
         if (BuildConfig.TELEGRAM_API_ID <= 0 || BuildConfig.TELEGRAM_API_HASH.isBlank()) {
-            _auth.value = Auth.SetupRequired
+            publishAuth(Auth.SetupRequired)
             return
         }
         try {
             client = Client.create({ update -> onUpdate(update) }, { _ ->
-                _auth.value = Auth.Error("TDLib update processing error")
+                publishAuth(Auth.Error("TDLib update processing error"))
             }, { _ ->
-                _auth.value = Auth.Error("TDLib request error")
+                publishAuth(Auth.Error("TDLib request error"))
             })
         } catch (_: Throwable) {
-            _auth.value = Auth.Error("Could not load TDLib native library")
+            publishAuth(Auth.Error("Could not load TDLib native library"))
         }
     }
 
@@ -86,28 +118,56 @@ class TdlibSession(private val context: Context) {
     }
 
     private fun request(function: TdApi.Function<*>, stage: String) {
+        val expectedAuth: Auth? = when (stage) {
+            "Phone login" -> Auth.Phone
+            "Verification code", "Resend code" -> Auth.Code
+            "Two-step password" -> Auth.Password
+            else -> null
+        }
         val active = client ?: run {
-            _auth.value = Auth.Error("TDLib is not running. Restart the app.")
+            publishAuth(Auth.Error("TDLib is not running. Restart the app."))
             return
         }
-        _notice.value = null
+        val generation: Long
+        synchronized(authorizationLock) {
+            // Do not send a second verification request during an ongoing one.
+            if (expectedAuth != null) {
+                if (_auth.value != expectedAuth || pendingAuthRequest != null) return
+                pendingAuthRequest = stage
+                _authBusy.value = true
+            }
+            generation = authorizationGeneration
+            _notice.value = null
+        }
         active.send(function) { result ->
+            val relevant: Boolean = synchronized(authorizationLock) {
+                val sameGeneration = generation == authorizationGeneration
+                if (expectedAuth != null && sameGeneration && pendingAuthRequest == stage) {
+                    pendingAuthRequest = null
+                    _authBusy.value = false
+                }
+                sameGeneration && (expectedAuth == null || _auth.value == expectedAuth)
+            }
+            // A phone-request failure arriving AFTER WaitCode must never appear
+            // on the code screen. The state update is authoritative.
+            if (!relevant) return@send
             if (result is TdApi.Error) {
-                // TDLib uses 404 to indicate LoadChats has no more chats to return.
                 if (stage == "Chat sync" && result.code == 404) return@send
                 val diagnostic = safeFailure(stage, result)
                 if (stage == "TDLib initialization") {
-                    _auth.value = Auth.Error(diagnostic)
+                    publishAuth(Auth.Error(diagnostic))
                 } else {
-                    // Phone/OTP/2FA fields stay visible so the user can retry.
                     _notice.value = diagnostic
                 }
+            } else if (stage == "Resend code") {
+                _notice.value = "Telegram accepted the resend request. Enter the newest code."
             }
         }
     }
 
     private fun onUpdate(obj: TdApi.Object) {
         // Chat headers and message timelines share the same authorized TDLib client.
+        fileStore.onUpdate(obj)
         messaging.onUpdate(obj)
         when (obj) {
             is TdApi.UpdateAuthorizationState -> onAuth(obj.authorizationState)
@@ -129,6 +189,10 @@ class TdlibSession(private val context: Context) {
                         obj.position
                     emitChats()
                 }
+            }
+            is TdApi.UpdateChatPhoto -> synchronized(known) {
+                known[obj.chatId]?.photo = obj.photo
+                emitChats()
             }
             is TdApi.UpdateChatReadInbox -> synchronized(known) {
                 known[obj.chatId]?.unreadCount = obj.unreadCount; emitChats()
@@ -154,22 +218,56 @@ class TdlibSession(private val context: Context) {
                     BuildConfig.VERSION_NAME
                 ), "TDLib initialization")
             }
-            is TdApi.AuthorizationStateWaitPhoneNumber -> _auth.value = Auth.Phone
-            is TdApi.AuthorizationStateWaitCode -> _auth.value = Auth.Code
-            is TdApi.AuthorizationStateWaitPassword -> _auth.value = Auth.Password
-            is TdApi.AuthorizationStateWaitEmailAddress -> _auth.value = Auth.EmailAddress
-            is TdApi.AuthorizationStateWaitEmailCode -> _auth.value = Auth.EmailCode
-            is TdApi.AuthorizationStateWaitRegistration -> _auth.value = Auth.RegistrationRequired
+            is TdApi.AuthorizationStateWaitPhoneNumber -> publishAuth(Auth.Phone)
+            is TdApi.AuthorizationStateWaitCode -> {
+                val info = state.codeInfo
+                _canResendCode.value = info?.nextType != null
+                _resendCodeAfterMs.value = SystemClock.elapsedRealtime() +
+                    (info?.timeout ?: 0).coerceAtLeast(0) * 1000L
+                publishAuth(Auth.Code)
+            }
+            is TdApi.AuthorizationStateWaitPassword -> publishAuth(Auth.Password)
+            is TdApi.AuthorizationStateWaitEmailAddress -> publishAuth(Auth.EmailAddress)
+            is TdApi.AuthorizationStateWaitEmailCode -> publishAuth(Auth.EmailCode)
+            is TdApi.AuthorizationStateWaitRegistration -> publishAuth(Auth.RegistrationRequired)
             is TdApi.AuthorizationStateReady -> {
-                _auth.value = Auth.Ready
+                _canResendCode.value = false
+                publishAuth(Auth.Ready)
                 request(TdApi.LoadChats(TdApi.ChatListMain(), 100), "Chat sync")
             }
             is TdApi.AuthorizationStateClosed -> {
                 messaging.clear()
+                fileStore.clear()
+                synchronized(known) {
+                    known.clear()
+                    missingTitleRefreshes.clear()
+                    _chats.value = emptyList()
+                }
                 client = null
-                _auth.value = Auth.Starting
+                publishAuth(Auth.Starting)
             }
-            else -> _auth.value = Auth.Starting
+            else -> publishAuth(Auth.Starting)
+        }
+    }
+
+    private fun requestMissingTitle(chat: TdApi.Chat) {
+        if (chat.title.isNotBlank() || !missingTitleRefreshes.add(chat.id)) return
+        client?.send(TdApi.GetChat(chat.id)) { result ->
+            if (result is TdApi.Chat && result.title.isNotBlank()) {
+                synchronized(known) {
+                    known[result.id] = result
+                    emitChats()
+                }
+            }
+        }
+    }
+
+    private fun fallbackChatTitle(chat: TdApi.Chat): String {
+        if (chat.title.isNotBlank()) return chat.title
+        return when (chat.type) {
+            is TdApi.ChatTypePrivate -> "Unavailable contact"
+            is TdApi.ChatTypeSecret -> "Unavailable secret chat"
+            else -> "Unavailable group or channel"
         }
     }
 
@@ -185,16 +283,31 @@ class TdlibSession(private val context: Context) {
             .sortedWith(compareByDescending<Pair<TdApi.Chat, Long>> { it.second }
                 .thenByDescending { it.first.id })
             .map { (chat, _) ->
-                val preview = (chat.lastMessage?.content as? TdApi.MessageText)?.text?.text
-                    ?: if (chat.lastMessage == null) "No messages" else "Media or another message"
+                val preview = when (val content = chat.lastMessage?.content) {
+                    is TdApi.MessageText -> content.text?.text.orEmpty()
+                    is TdApi.MessagePhoto -> "📷 Photo"
+                    is TdApi.MessageVideo -> "🎥 Video"
+                    is TdApi.MessageVoiceNote -> "🎤 Voice note"
+                    is TdApi.MessageVideoNote -> "🎬 Video note"
+                    is TdApi.MessageAudio -> "🎵 Audio"
+                    is TdApi.MessageDocument -> "📄 Document"
+                    is TdApi.MessageSticker -> "🎨 Sticker"
+                    is TdApi.MessageAnimation -> "🎞 GIF"
+                    is TdApi.MessagePoll -> "📊 Poll"
+                    null -> "No messages"
+                    else -> "Other message"
+                }
+                fileStore.ensure(chat.photo?.small)
+                requestMissingTitle(chat)
                 Chat(
                     id = chat.id,
-                    title = chat.title,
+                    title = fallbackChatTitle(chat),
                     username = "",
                     preview = preview,
                     time = "",
                     unread = chat.unreadCount,
-                    isGroup = chat.type !is TdApi.ChatTypePrivate
+                    isGroup = chat.type !is TdApi.ChatTypePrivate,
+                    photoFileId = chat.photo?.small?.id
                 )
             }.toList()
     }
@@ -204,6 +317,13 @@ class TdlibSession(private val context: Context) {
         request(TdApi.SetAuthenticationPhoneNumber(phone, null), "Phone login")
     }
     fun submitCode(code: String) = request(TdApi.CheckAuthenticationCode(code), "Verification code")
+
+    fun resendCode() {
+        if (_auth.value != Auth.Code || !_canResendCode.value) return
+        if (SystemClock.elapsedRealtime() < _resendCodeAfterMs.value) return
+        request(TdApi.ResendAuthenticationCode(), "Resend code")
+    }
+
     fun submitPassword(password: String) = request(TdApi.CheckAuthenticationPassword(password), "Two-step password")
 
     fun close() {

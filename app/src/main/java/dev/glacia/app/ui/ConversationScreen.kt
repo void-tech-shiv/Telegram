@@ -1,6 +1,7 @@
 package dev.glacia.app.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -13,21 +14,70 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Send
+import androidx.compose.material.icons.rounded.InsertDriveFile
+import androidx.compose.material.icons.rounded.Videocam
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import dev.glacia.app.data.DocumentKind
+import dev.glacia.app.data.FileTransfer
 import dev.glacia.app.data.Chat
 import dev.glacia.app.data.Message
+import coil3.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
+import java.io.File
+
+/**
+ * A consistent Liquid Glass preview for both Telegram photos and images sent as files.
+ * The blurred background fills portrait-image gutters while ContentScale.Fit preserves
+ * the entire photo instead of cropping it.
+ */
+@Composable
+private fun GlassImagePreview(
+    path: String,
+    description: String,
+    modifier: Modifier = Modifier,
+    onOpen: (() -> Unit)? = null
+) {
+    val rounded = RoundedCornerShape(16.dp)
+    Box(
+        modifier
+            .fillMaxWidth()
+            .height(194.dp)
+            .clip(rounded)
+            .then(if (onOpen != null) Modifier.clickable(onClick = onOpen) else Modifier)
+    ) {
+        AsyncImage(
+            model = File(path),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize().blur(20.dp)
+        )
+        Box(Modifier.fillMaxSize().background(Color(0x550B1433)))
+        AsyncImage(
+            model = File(path),
+            contentDescription = description,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.fillMaxSize()
+        )
+    }
+}
 
 /**
  * Live chat UI. Initial history, older pages and incoming messages come from TDLib.
@@ -37,6 +87,9 @@ import dev.glacia.app.data.Message
 fun ConversationScreen(
     chat: Chat,
     messages: List<Message>,
+    filePaths: Map<Int, String>,
+    documentTransfers: Map<Int, FileTransfer>,
+    onDownloadDocument: (Int) -> Unit,
     loading: Boolean,
     error: String?,
     dark: Boolean,
@@ -48,6 +101,8 @@ fun ConversationScreen(
     val secondary = if (dark) Color(0xFFC6D0E4) else Color(0xFF5D6981)
     val highlight = if (dark) Color(0xFF95E1FE) else Color(0xFF435EE3)
     val timelineState = rememberLazyListState()
+    val saveDocument = rememberSaveDocument()
+    var imageViewer by remember { mutableStateOf<String?>(null) }
     var newestSeen by remember(chat.id) { mutableLongStateOf(Long.MIN_VALUE) }
     var draft by rememberSaveable(chat.id) { mutableStateOf("") }
 
@@ -56,7 +111,7 @@ fun ConversationScreen(
         val newest = messages.lastOrNull()?.id ?: return@LaunchedEffect
         if (newestSeen != newest) {
             newestSeen = newest
-            timelineState.scrollToItem(messages.lastIndex)
+            timelineState.scrollToItem(messages.size)
         }
     }
     fun send() {
@@ -67,12 +122,38 @@ fun ConversationScreen(
         }
     }
 
+    imageViewer?.let { imagePath ->
+        Dialog(onDismissRequest = { imageViewer = null }) {
+            Surface(
+                shape = RoundedCornerShape(22.dp),
+                color = if (dark) Color(0xFF15203A) else Color.White,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(Modifier.padding(12.dp)) {
+                    IconButton(
+                        onClick = { imageViewer = null },
+                        modifier = Modifier.align(Alignment.End)
+                    ) {
+                        Icon(Icons.Rounded.Close, "Close image", tint = foreground)
+                    }
+                    AsyncImage(
+                        model = File(imagePath),
+                        contentDescription = "Image preview",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 540.dp)
+                    )
+                }
+            }
+        }
+    }
+
     Column(Modifier.fillMaxSize()) {
-        Box(Modifier.weight(1f)) {
+        // Keep partially scrolled messages clipped beneath the header, not over it.
+        Box(Modifier.weight(1f).clipToBounds()) {
             LazyColumn(
                 state = timelineState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 17.dp, vertical = 18.dp),
+                modifier = Modifier.fillMaxSize().clipToBounds(),
+                contentPadding = PaddingValues(horizontal = 17.dp, vertical = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 item {
@@ -96,15 +177,18 @@ fun ConversationScreen(
                         horizontalArrangement =
                             if (msg.outgoing) Arrangement.End else Arrangement.Start
                     ) {
-                        Column(
+                        val isVisual = msg.mediaType == "photo" || msg.mediaType == "video"
+                        val imageDocument = msg.mediaType == "document" &&
+                            DocumentKind.isImage(msg.attachmentMime, msg.attachmentName)
+                        val bubbleShape = RoundedCornerShape(22.dp)
+                        val bubbleWidth = if (isVisual || imageDocument) {
+                            Modifier.fillMaxWidth(0.80f).widthIn(max = 278.dp)
+                        } else {
                             Modifier.widthIn(max = 304.dp)
-                                .clip(
-                                    RoundedCornerShape(
-                                        topStart = 21.dp, topEnd = 21.dp,
-                                        bottomStart = if (msg.outgoing) 21.dp else 5.dp,
-                                        bottomEnd = if (msg.outgoing) 5.dp else 21.dp
-                                    )
-                                )
+                        }
+                        Column(
+                            bubbleWidth
+                                .clip(bubbleShape)
                                 .background(
                                     if (msg.outgoing) {
                                         if (dark) Color(0xD83D5E90) else Color(0xDED6E1FF)
@@ -114,17 +198,156 @@ fun ConversationScreen(
                                 )
                                 .border(
                                     1.dp, Color.White.copy(alpha = if (dark) 0.13f else 0.55f),
-                                    RoundedCornerShape(21.dp)
+                                    bubbleShape
                                 )
-                                .padding(horizontal = 15.dp, vertical = 11.dp)
+                                .padding(horizontal = 12.dp, vertical = 11.dp)
                         ) {
-                            Text(
-                                msg.text,
-                                color = foreground,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontSize = 15.sp,
-                                lineHeight = 21.sp
-                            )
+                            val thumbnailPath = msg.mediaFileId?.let(filePaths::get)
+                            if (thumbnailPath != null && isVisual) {
+                                GlassImagePreview(
+                                    path = thumbnailPath,
+                                    description = "${msg.mediaType} preview",
+                                    onOpen = if (msg.mediaType == "photo") {
+                                        { imageViewer = thumbnailPath }
+                                    } else null
+                                )
+                                if (msg.mediaType == "video") {
+                                    Row(
+                                        Modifier.padding(top = 7.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(Color(0x6616223C))
+                                            .padding(horizontal = 9.dp, vertical = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            Icons.Rounded.Videocam,
+                                            contentDescription = null,
+                                            tint = foreground,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                        Spacer(Modifier.width(4.dp))
+                                        Text("Video preview only", color = foreground, fontSize = 10.sp)
+                                    }
+                                }
+                                Spacer(Modifier.height(7.dp))
+                            } else if (isVisual) {
+                                Text(
+                                    "Preview unavailable",
+                                    color = secondary,
+                                    fontSize = 12.sp
+                                )
+                                Spacer(Modifier.height(5.dp))
+                            }
+                            if (msg.mediaType == "document") {
+                                val attachmentId = msg.attachmentFileId
+                                val downloadedPath = attachmentId?.let(filePaths::get)
+                                val transfer = attachmentId?.let(documentTransfers::get)
+                                val isImage = DocumentKind.isImage(
+                                    msg.attachmentMime, msg.attachmentName
+                                )
+                                val imagePath = if (isImage) thumbnailPath ?: downloadedPath else null
+                                if (imagePath != null) {
+                                    GlassImagePreview(
+                                        path = imagePath,
+                                        description = "Image attachment preview",
+                                        onOpen = if (downloadedPath != null) {
+                                            { imageViewer = downloadedPath }
+                                        } else null
+                                    )
+                                    Spacer(Modifier.height(8.dp))
+                                }
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.fillMaxWidth()
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(highlight.copy(alpha = if (imagePath != null) 0.06f else 0.13f))
+                                        .padding(
+                                            horizontal = 10.dp,
+                                            vertical = if (imagePath != null) 7.dp else 10.dp
+                                        )
+                                ) {
+                                    if (imagePath == null) {
+                                        Icon(
+                                            Icons.Rounded.InsertDriveFile,
+                                            contentDescription = null,
+                                            tint = highlight,
+                                            modifier = Modifier.size(29.dp)
+                                        )
+                                        Spacer(Modifier.width(9.dp))
+                                    }
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            msg.attachmentName?.takeIf { it.isNotBlank() }
+                                                ?: "Document",
+                                            color = foreground,
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 13.sp,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            when {
+                                                downloadedPath != null -> "Ready on this device"
+                                                transfer?.downloading == true -> {
+                                                    val total = transfer.totalBytes
+                                                    if (total > 0L) {
+                                                        "${(transfer.downloadedBytes * 100L / total).coerceIn(0, 100)}% downloaded"
+                                                    } else "Downloading…"
+                                                }
+                                                transfer?.error != null -> transfer.error
+                                                else -> "Tap Download to save or view"
+                                            },
+                                            color = secondary,
+                                            fontSize = 10.sp
+                                        )
+                                    }
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (downloadedPath != null) {
+                                        if (isImage) {
+                                            TextButton(onClick = { imageViewer = downloadedPath }) {
+                                                Text("View", color = highlight)
+                                            }
+                                        }
+                                        TextButton(onClick = {
+                                            saveDocument(
+                                                downloadedPath,
+                                                msg.attachmentName,
+                                                msg.attachmentMime
+                                            )
+                                        }) {
+                                            Text("Save", color = highlight)
+                                        }
+                                    } else if (attachmentId != null) {
+                                        TextButton(
+                                            onClick = { onDownloadDocument(attachmentId) },
+                                            enabled = transfer?.downloading != true
+                                        ) {
+                                            Icon(Icons.Rounded.Download, null,
+                                                Modifier.size(16.dp), tint = highlight)
+                                            Spacer(Modifier.width(4.dp))
+                                            Text(
+                                                if (transfer?.downloading == true) "Downloading"
+                                                else if (transfer?.error != null) "Retry"
+                                                else "Download",
+                                                color = highlight
+                                            )
+                                        }
+                                    }
+                                }
+                            } else {
+                                Text(
+                                    msg.text,
+                                    color = foreground,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontSize = 15.sp,
+                                    lineHeight = 21.sp
+                                )
+                            }
                             Spacer(Modifier.height(5.dp))
                             Text(
                                 msg.time + when {

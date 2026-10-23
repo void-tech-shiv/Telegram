@@ -12,7 +12,10 @@ import java.util.Locale
  * Live TDLib messages. Updates are delivered from TDLib threads, so the shared
  * message map is guarded and emitted as immutable snapshots for Compose.
  */
-class TdlibMessages(private val client: () -> Client?) {
+class TdlibMessages(
+    private val client: () -> Client?,
+    private val files: TdlibFileStore
+) {
     private val lock = Any()
     private val snapshots = mutableMapOf<Long, List<Message>>()
     private val loadingChats = mutableSetOf<Long>()
@@ -127,9 +130,20 @@ class TdlibMessages(private val client: () -> Client?) {
                 synchronized(lock) {
                     val list = snapshots[update.chatId] ?: return
                     snapshots[update.chatId] = list.map {
-                        if (it.id == update.messageId)
-                            it.copy(text = displayContent(update.newContent))
-                        else it
+                        if (it.id == update.messageId) {
+                            val thumbnail = thumbnailFor(update.newContent)
+                            val attachment = (update.newContent as? TdApi.MessageDocument)?.document
+                            files.ensure(thumbnail)
+                            files.observeExisting(attachment?.document)
+                            it.copy(
+                                text = displayContent(update.newContent),
+                                mediaType = mediaType(update.newContent),
+                                mediaFileId = thumbnail?.id,
+                                attachmentFileId = attachment?.document?.id,
+                                attachmentName = attachment?.fileName,
+                                attachmentMime = attachment?.mimeType
+                            )
+                        } else it
                     }
                     _messages.value = snapshots.toMap()
                 }
@@ -140,6 +154,10 @@ class TdlibMessages(private val client: () -> Client?) {
 
     private fun fromTd(message: TdApi.Message): Message {
         val label = displayContent(message.content)
+        val thumbnail = thumbnailFor(message.content)
+        val attachment = (message.content as? TdApi.MessageDocument)?.document
+        files.ensure(thumbnail)
+        files.observeExisting(attachment?.document)
         val clock = if (message.date > 0)
             DateFormat.getTimeInstance(DateFormat.SHORT, Locale.getDefault())
                 .format(Date(message.date.toLong() * 1000L))
@@ -152,19 +170,49 @@ class TdlibMessages(private val client: () -> Client?) {
             outgoing = message.isOutgoing,
             date = message.date,
             sending = message.sendingState is TdApi.MessageSendingStatePending,
-            failed = message.sendingState is TdApi.MessageSendingStateFailed
+            failed = message.sendingState is TdApi.MessageSendingStateFailed,
+            mediaType = mediaType(message.content),
+            mediaFileId = thumbnail?.id,
+            attachmentFileId = attachment?.document?.id,
+            attachmentName = attachment?.fileName,
+            attachmentMime = attachment?.mimeType
         )
+    }
+
+    private fun mediaType(content: TdApi.MessageContent?): String? = when (content) {
+        is TdApi.MessagePhoto -> "photo"
+        is TdApi.MessageVideo -> "video"
+        is TdApi.MessageDocument -> "document"
+        else -> null
+    }
+
+    /** Prefer an economical medium-sized thumbnail, never full-resolution automatic downloads. */
+    private fun thumbnailFor(content: TdApi.MessageContent?): TdApi.File? = when (content) {
+        is TdApi.MessagePhoto -> {
+            val sorted = content.photo?.sizes?.sortedBy { it.width.toLong() * it.height }
+            (sorted?.firstOrNull {
+                maxOf(it.width, it.height) in 240..1024
+            } ?: sorted?.lastOrNull {
+                maxOf(it.width, it.height) <= 1024
+            })?.photo
+        }
+        is TdApi.MessageVideo -> content.video?.thumbnail?.file
+        is TdApi.MessageDocument -> content.document?.thumbnail?.file
+        else -> null
     }
 
     private fun displayContent(content: TdApi.MessageContent?): String = when (content) {
         is TdApi.MessageText -> content.text?.text.orEmpty()
-        is TdApi.MessagePhoto -> "📷 Photo"
-        is TdApi.MessageVideo -> "🎥 Video"
+        is TdApi.MessagePhoto -> "📷 Photo" + (content.caption?.text?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: "")
+        is TdApi.MessageVideo -> "🎥 Video" + (content.caption?.text?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: "")
         is TdApi.MessageAnimation -> "🎞 Animation"
         is TdApi.MessageVoiceNote -> "🎤 Voice message"
         is TdApi.MessageVideoNote -> "🎬 Video message"
         is TdApi.MessageAudio -> "🎵 Audio"
-        is TdApi.MessageDocument -> "📄 Document"
+        is TdApi.MessageDocument -> {
+            val name = content.document?.fileName.orEmpty().trim().take(72)
+            if (name.isBlank()) "📄 Document" else "📄 $name"
+        }
         is TdApi.MessageSticker -> "🎨 Sticker"
         is TdApi.MessagePoll -> "📊 Poll"
         is TdApi.MessageLocation -> "📍 Location"
