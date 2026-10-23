@@ -800,7 +800,8 @@ private fun GlaciaApp(
                                 settingsPage = "Home"
                                 tab = "Settings"
                             },
-                            onRefresh = session::refreshCoreAccount
+                            onRefresh = session::refreshCoreAccount,
+                            onSavePhoto = session::updateOwnPhoto
                         )
                         "Discover" -> if (hubSearching) {
                             Column(Modifier.fillMaxSize().background(coreSurface(dark))) {
