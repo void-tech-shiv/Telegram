@@ -2,7 +2,26 @@
 
 Independent Android Telegram client developed in **Kotlin + Jetpack Compose + TDLib**. Midnight Glass and Frosted Daylight themes, TDLib Telegram session, real chats/messaging, images/documents, Media3 video/voice playback, Discover search, unread filters, read receipts and typing indicators.
 
-## Experimental developer build: v0.3.22 (Phase 4 — core Telegram)
+## Experimental developer build: v0.3.23 (Phase 4.1–4.5 Core)
+
+**Branch:** `feature/phase-4-1-to-4-5-core` · **Draft PR #28** · Two-device QA pending.
+
+- **4.1:** Edit Telegram username and avatar, find/add contacts by public
+  username without sharing own phone number, remove synced contacts.
+- **4.2:** Read/edit selected Telegram privacy audiences (last seen, phone
+  visibility, calls) while retaining explicit exceptions, view/terminate
+  **other-device** sessions after confirmation, block/unblock users.
+- **4.3:** Pinned message/chat info, unread mark, Telegram cloud folders
+  with people/groups/channels categories, and delete-without-leaving.
+- **4.4:** Get administrator count, rename, edit description, add cloud
+  contacts to groups (Telegram permission-enforced).
+- **4.5:** Create Telegram supergroups or broadcast channels; create
+  shareable invite links only after explicit consent.
+- Still **not complete** Telegram feature parity. Advanced privacy rule
+  exceptions editor, full chat-folder custom lists, member bans/roles and
+  join-request management are deferred. See `docs/PHASE4_1_TO_4_5.md`.
+
+## Previous experimental developer build: v0.3.22 (Phase 4 — core Telegram)
 
 **Branch:** `feature/phase-4-core-account-contacts` · **Status:** draft, real-device QA pending.
 
