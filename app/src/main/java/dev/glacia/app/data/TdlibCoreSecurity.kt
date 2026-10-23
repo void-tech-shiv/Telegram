@@ -147,7 +147,9 @@ class TdlibCoreSecurity(private val client: () -> Client?) {
             else -> return
         }
         val active = client() ?: return
+        val token = synchronized(lock) { epoch }
         active.send(TdApi.GetUserPrivacySettingRules(setting)) { response ->
+            synchronized(lock) { if (token != epoch) return@send }
             if (response !is TdApi.UserPrivacySettingRules) {
                 synchronized(lock) { _state.value = _state.value.copy(
                     notice = "Could not fetch fresh Telegram privacy rules."
@@ -169,6 +171,7 @@ class TdlibCoreSecurity(private val client: () -> Client?) {
             val next = TdApi.UserPrivacySettingRules(rules)
             active.send(TdApi.SetUserPrivacySettingRules(setting, next)) { result ->
                 synchronized(lock) {
+                    if (token != epoch) return@synchronized
                     _state.value = _state.value.copy(
                         notice = if (result is TdApi.Error)
                             "Privacy change denied (Telegram code ${result.code})."
