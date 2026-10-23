@@ -232,14 +232,22 @@ internal fun CoreProfileSection(
     var editingUsername by remember { mutableStateOf(false) }
     var publicUsername by remember { mutableStateOf("") }
     val context = LocalContext.current
+    var photoError by remember { mutableStateOf<String?>(null) }
     val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
+        photoError = null
+        var destination: java.io.File? = null
         runCatching {
             val type = context.contentResolver.getType(uri)
-            require(type == "image/jpeg" || type == "image/png")
-            val destination = java.io.File.createTempFile("glacia-avatar-", ".jpg", context.cacheDir)
+            require(type == "image/jpeg" || type == "image/png") {
+                "Select a JPEG or PNG."
+            }
+            destination = java.io.File.createTempFile(
+                "glacia-avatar-", if (type == "image/png") ".png" else ".jpg",
+                context.cacheDir
+            )
             context.contentResolver.openInputStream(uri)?.use { input ->
-                destination.outputStream().use { output ->
+                destination!!.outputStream().use { output ->
                     val buffer = ByteArray(8192)
                     var total = 0
                     while (true) {
@@ -251,7 +259,10 @@ internal fun CoreProfileSection(
                     }
                 }
             } ?: error("Could not open photo")
-            onSavePhoto(destination.absolutePath)
+            onSavePhoto(destination!!.absolutePath)
+        }.onFailure {
+            destination?.delete()
+            photoError = "Photo couldn't be prepared. Choose a JPEG/PNG under 5 MB."
         }
     }
     if (editingUsername) AlertDialog(
@@ -351,6 +362,8 @@ internal fun CoreProfileSection(
                 TextButton(onClick = { pickPhoto.launch("image/*") },
                     enabled = !state.busy) { Text("Update photo") }
             }
+            photoError?.let { Text(it, color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall) }
         }
         if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         state.notice?.let {
