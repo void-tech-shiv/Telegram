@@ -60,6 +60,7 @@ import dev.glacia.app.data.ChatFilters
 import coil3.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
 import java.io.File
+import dev.glacia.app.data.NotificationHealth
 import dev.glacia.app.data.TdlibSession
 import dev.glacia.app.settings.ThemeChoice
 import dev.glacia.app.settings.ThemePreferences
@@ -204,6 +205,7 @@ private fun GlaciaApp(
     val typingByChat by session.typingActivities.collectAsState()
     val notificationSetup by session.notificationSetup.collectAsState()
     val notificationEvents by session.notificationEvents.collectAsState()
+    val notificationHealth by session.notificationHealth.collectAsState()
     LaunchedEffect(current?.id) {
         if (current == null) return@LaunchedEffect
         while (true) {
@@ -340,7 +342,7 @@ private fun GlaciaApp(
                             selectedTheme, dark, onThemeChange,
                             notificationPermission, onNotificationPermission,
                             onTestNotification, onOpenNotificationSettings,
-                            notificationSetup, notificationEvents
+                            notificationSetup, notificationEvents, notificationHealth
                         )
                     }
                 }
@@ -634,7 +636,8 @@ private fun SettingsScreen(
     onTestNotification: () -> Boolean,
     onOpenNotificationSettings: () -> Unit,
     notificationSetup: String,
-    notificationEvents: Int
+    notificationEvents: Int,
+    notificationHealth: NotificationHealth
 ) {
     var notificationTestResult by remember { mutableStateOf<String?>(null) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())
@@ -699,8 +702,26 @@ private fun SettingsScreen(
         }
         Text(notificationSetup, color = mutedInk(dark), fontSize = 12.sp)
         Text(
-            "TDLib notification updates received: $notificationEvents",
+            "TDLib group updates: $notificationEvents",
             color = mutedInk(dark), fontSize = 12.sp
+        )
+        Text("Incoming message events: ${notificationHealth.incomingMessages}",
+            color = mutedInk(dark), fontSize = 12.sp)
+        Text("New TDLib notification items: ${notificationHealth.groupAdds}",
+            color = mutedInk(dark), fontSize = 12.sp)
+        Text("Android alerts posted: ${notificationHealth.posted}",
+            color = mutedInk(dark), fontSize = 12.sp)
+        Text(
+            "App state: " + (if (notificationHealth.inForeground) "Foreground" else "Background"),
+            color = mutedInk(dark), fontSize = 12.sp
+        )
+        Text("Last event: ${notificationHealth.lastDecision}",
+            color = mutedInk(dark), fontSize = 12.sp, lineHeight = 17.sp)
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Diagnostic counters reset if Android restarts the app process. " +
+                "They contain no chat contents or account identifiers.",
+            color = mutedInk(dark), fontSize = 11.sp
         )
         Spacer(Modifier.height(7.dp))
         Text(
