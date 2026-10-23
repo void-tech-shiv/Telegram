@@ -2,9 +2,15 @@
 
 Independent Android Telegram client developed in **Kotlin + Jetpack Compose + TDLib**. Midnight Glass and Frosted Daylight themes, TDLib Telegram session, real chats/messaging, images/documents, Media3 video/voice playback, Discover search, unread filters, read receipts and typing indicators.
 
-## Current developer build: v0.3.8 (Phase 3.7)
+## Current developer build: v0.3.9 (Phase 3.8)
 
-**Branch:** `feature/phase-3-7-media-compose` · **Status:** experimental draft, not merged or production certified.
+**Branch:** `feature/phase-3-8-message-actions-calls` · **Status:** experimental draft, not merged or production certified.
+
+### Message actions and calls in v0.3.9
+- Long-press a message to Reply / Forward / Edit / Delete (for me or everyone) using Telegram's permission rules.
+- Add or remove common emoji reactions; counts refresh from TDLib.
+- For private contacts with a public username, the call icon opens their profile **in the official Telegram app** to start voice/video calls externally.
+- **Native GLACIA VoIP not implemented.** TDLib call signaling needs a separate tested native tgcalls/WebRTC media engine. See `docs/PHASE3_8.md`.
 
 ### Media uploads and recording in v0.3.8
 - 📎 Send JPG/PNG/WebP photos, short videos and arbitrary documents via Android system picker and TDLib.
@@ -25,7 +31,7 @@ Independent Android Telegram client developed in **Kotlin + Jetpack Compose + TD
 ```powershell
 cd D:\telegram\Telegram
 git fetch origin
-git switch --track origin/feature/phase-3-7-media-compose
+git switch --track origin/feature/phase-3-8-message-actions-calls
 .\gradlew.bat :app:assembleDebug :app:testDebugUnitTest
 ```
 
