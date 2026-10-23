@@ -170,7 +170,9 @@ class TdlibMessages(
                                 attachmentName = attachment?.fileName,
                                 attachmentMime = attachment?.mimeType,
                                 playbackFileId = originalPlayback?.id,
-                                playbackDurationSeconds = playbackDuration(update.newContent)
+                                playbackDurationSeconds = playbackDuration(update.newContent),
+                                stickerFileId = (update.newContent as? TdApi.MessageSticker)?.sticker?.sticker?.id,
+                                stickerFormat = stickerFormat(update.newContent)
                             )
                         } else it
                     }
@@ -201,6 +203,12 @@ class TdlibMessages(
         val thumbnail = thumbnailFor(message.content)
         val attachment = (message.content as? TdApi.MessageDocument)?.document
         files.ensure(thumbnail)
+        val sticker = (message.content as? TdApi.MessageSticker)?.sticker
+        if (sticker != null) {
+            // Keep animated sticker download bounded. Telegram normal sticker
+            // file sizes are small; do not auto-download unknown/large payloads.
+            files.ensureSmallSticker(sticker.sticker)
+        }
         files.observeExisting(attachment?.document)
         val originalPlayback = originalPlaybackFile(message.content)
         files.observeExisting(originalPlayback)
@@ -224,6 +232,8 @@ class TdlibMessages(
             attachmentMime = attachment?.mimeType,
             playbackFileId = originalPlayback?.id,
             playbackDurationSeconds = playbackDuration(message.content),
+            stickerFileId = sticker?.sticker?.id,
+            stickerFormat = stickerFormat(message.content),
             replyToMessageId = (message.replyTo as? TdApi.MessageReplyToMessage)
                 ?.messageId?.takeIf { it > 0L },
             edited = message.editDate > 0,
@@ -239,6 +249,14 @@ class TdlibMessages(
             }
         }.orEmpty()
 
+    private fun stickerFormat(content: TdApi.MessageContent?): String? =
+        when ((content as? TdApi.MessageSticker)?.sticker?.format) {
+            is TdApi.StickerFormatWebp -> "webp"
+            is TdApi.StickerFormatTgs -> "tgs"
+            is TdApi.StickerFormatWebm -> "webm"
+            else -> null
+        }
+
     private fun mediaType(content: TdApi.MessageContent?): String? = when (content) {
         is TdApi.MessagePhoto -> "photo"
         is TdApi.MessageVideo -> "video"
@@ -246,6 +264,9 @@ class TdlibMessages(
         is TdApi.MessageAudio -> "audio"
         is TdApi.MessageDocument -> "document"
         is TdApi.MessageSticker -> "sticker"
+        is TdApi.MessageAnimatedEmoji -> "animated_emoji"
+        is TdApi.MessageVideoNote -> "video_note"
+        is TdApi.MessageDice -> "dice"
         is TdApi.MessageAnimation -> "animation"
         // Telegram call records are service events, not ordinary text messages.
         // Keep their type for message-action eligibility checks.
@@ -311,6 +332,11 @@ class TdlibMessages(
         is TdApi.MessageLocation -> "📍 Location"
         is TdApi.MessageContact -> "👤 Contact"
         is TdApi.MessageCall -> if (content.isVideo) "📹 Video call" else "📞 Voice call"
-        else -> "Unsupported message type"
+        is TdApi.MessageAnimatedEmoji -> "✨ Animated emoji"
+        is TdApi.MessageVideoNote -> "🎬 Video note"
+        is TdApi.MessageDice -> "🎲 Dice"
+        // Unknown service records should never be misrepresented as a
+        // normal text message or a broken media file.
+        else -> "Telegram service message"
     }
 }
