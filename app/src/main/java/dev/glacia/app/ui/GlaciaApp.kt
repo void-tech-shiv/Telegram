@@ -669,6 +669,7 @@ private fun GlaciaApp(
                             session::refreshCoreAccount,
                             session::updateOwnProfile,
                             session::clearAccountNotice,
+                            session::logoutThisDevice,
                             notificationPermission, onNotificationPermission,
                             onTestNotification, onOpenNotificationSettings,
                             notificationSetup, notificationEvents, notificationHealth,
@@ -1020,6 +1021,7 @@ private fun SettingsScreen(
     onRefreshProfile: () -> Unit,
     onSaveProfile: (String, String, String) -> Unit,
     onDismissProfileNotice: () -> Unit,
+    onLogout: () -> Unit,
     notificationPermission: Boolean,
     onNotificationPermission: () -> Unit,
     onTestNotification: () -> Boolean,
@@ -1030,6 +1032,24 @@ private fun SettingsScreen(
     pushStatus: String
 ) {
     var notificationTestResult by remember { mutableStateOf<String?>(null) }
+    var logoutConfirmation by remember { mutableStateOf(false) }
+    if (logoutConfirmation) {
+        AlertDialog(
+            onDismissRequest = { logoutConfirmation = false },
+            title = { Text("Log out of GLACIA?") },
+            text = { Text("This will end this Telegram session on this device. " +
+                "Your Telegram cloud messages and other logged-in devices remain unaffected.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    logoutConfirmation = false
+                    onLogout()
+                }) { Text("Log out") }
+            },
+            dismissButton = {
+                TextButton(onClick = { logoutConfirmation = false }) { Text("Cancel") }
+            }
+        )
+    }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())
         .padding(horizontal = 23.dp, vertical = 18.dp)) {
         Text("Settings", color = ink(dark), fontSize = 29.sp, fontWeight = FontWeight.Bold)
@@ -1160,5 +1180,9 @@ private fun SettingsScreen(
                 "is not guaranteed.",
             color = mutedInk(dark), fontSize = 13.sp, lineHeight = 20.sp
         )
+        Spacer(Modifier.height(19.dp))
+        TextButton(onClick = { logoutConfirmation = true }) {
+            Text("Log out of this device", color = MaterialTheme.colorScheme.error)
+        }
     }
 }
