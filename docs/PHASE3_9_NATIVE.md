@@ -1,4 +1,4 @@
-# GLACIA Phase 3.9: experimental native 1:1 voice + video (v0.3.11)
+# GLACIA Phase 3.9: experimental native 1:1 voice + video (v0.3.12)
 
 > **Not production-ready, not verified end to end on two real Telegram accounts.**
 > Native calling is **OFF** in normal builds. No claim of reliable two-way audio or video is made without device verification.
@@ -23,6 +23,38 @@
 3. Full Android 14+/15+/16 ongoing-call foreground services, Telecom/ConnectionService, Bluetooth headset negotiation, audio focus interruption, camera flip and persistent call notifications are **not implemented**. Do not rely on calls in background.
 4. For video, basic capture from the first camera and remote playback are wired. Local camera preview, front/back switch, adaptive bitrates and network recovery are not done. Remote rendering path has not been exercised on device.
 5. This PR is a dedicated experimental branch based on Phase 3.9 incoming call PR #16, itself a draft. Do not merge to main or enable in a public APK until regressions + privacy review pass.
+
+## Android Studio Run fix (v0.3.12)
+
+If your chat call button still offers **Open Telegram**, the running APK has
+`BuildConfig.EXPERIMENTAL_NATIVE_CALLS=false`. This can happen because the
+normal Android Studio Run button **does not inherit** an earlier terminal
+`-Pglacia.experimentalNativeCalls=true` flag or because an older APK remains
+installed. Do not delete user data to troubleshoot this.
+
+Enable experimental calling **only for local debug APKs** by adding this line
+to the project's existing **root `local.properties`** (next to `settings.gradle.kts`):
+
+```properties
+glacia.experimentalNativeCalls=true
+```
+
+Keep the rest of `local.properties` unchanged, especially private Telegram
+API credentials and `sdk.dir`. In Android Studio choose **Sync Project with Gradle Files**,
+then **Build > Rebuild Project**, connect the phone, and click **Run app**.
+The debug APK will now expose separate voice/video call buttons; the release
+APK always keeps native calling OFF regardless of this local setting. If the
+property is absent or false, the external handoff stays available.
+
+Verify installed version using `adb shell dumpsys package dev.glacia.app` and
+confirm that `versionName=0.3.12` appears after Run. For additional debugging
+inspect the generated `app/build/generated/source/buildConfig/debug/dev/glacia/app/BuildConfig.java`
+for `EXPERIMENTAL_NATIVE_CALLS = true`; if your AGP uses a different generated
+location, use Android Studio's Find in Files.
+
+**Do not modify or reset unrelated local `gradle.properties`,
+`gradle/wrapper/gradle-wrapper.properties`, `settings.gradle.kts` without
+reviewing the local diffs.**
 
 ## Build and test on Windows / Android Studio
 
@@ -49,11 +81,11 @@ git pull --ff-only origin feature/phase-3-9-native-media-bootstrap
 
 The initial setup commands use `git switch --track` only once; after that switch and pull the existing branch. Preserve uncommitted changes in `gradle.properties`, `settings.gradle.kts`, and the wrapper, unless reviewed separately.
 
-**Important:** in Android Studio's usual Run button, the Gradle property must also be set in root `gradle.properties` **locally** (ignored if it contains private settings) with:
+**Important:** for Android Studio's usual Run button, use root `local.properties` (**never commit this file**) with:
 ```properties
 glacia.experimentalNativeCalls=true
 ```
-Alternatively launch the opt-in Gradle task above and install its debug APK over the existing app via `adb install -r app/build/outputs/apk/debug/app-debug.apk`. Do not uninstall GLACIA or clear app data; no private Telegram API ID/hash is committed. The CI APK is unconfigured and not capable of signing in.
+Alternatively launch the opt-in Gradle task above and install its debug APK over the existing app via `adb install -r app/build/outputs/apk/debug/app-debug.apk`. Note that clicking Android Studio Run afterwards rebuilds the app: use `local.properties` if you want the opt-in to persist. Do not uninstall GLACIA or clear app data; no private Telegram API ID/hash is committed. The CI APK is unconfigured and not capable of signing in.
 
 To turn it off, delete that local property or set `glacia.experimentalNativeCalls=false`, rebuild, reinstall.
 
