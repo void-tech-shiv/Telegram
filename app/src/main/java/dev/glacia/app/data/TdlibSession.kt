@@ -313,7 +313,8 @@ class TdlibSession(private val context: Context) {
                     preview = preview,
                     time = "",
                     unread = chat.unreadCount,
-                    isGroup = chat.type !is TdApi.ChatTypePrivate,
+                    isGroup = chat.type is TdApi.ChatTypeBasicGroup ||
+                        chat.type is TdApi.ChatTypeSupergroup,
                     photoFileId = chat.photo?.small?.id
                 )
             }.toList()
