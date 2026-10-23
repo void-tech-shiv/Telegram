@@ -39,9 +39,11 @@ class GlaciaNotifications(context: Context) {
     @Volatile private var foreground = true
     @Volatile private var visibleChatId: Long? = null
     @Volatile private var resolveChatTitle: (Long) -> String? = { null }
+    @Volatile private var isChatMuted: (Long) -> Boolean = { false }
     private val groupLock = Any()
     private val activeGroups = mutableMapOf<Int, Long>()
     fun setTitleResolver(resolver: (Long) -> String?) { resolveChatTitle = resolver }
+    fun setMuteResolver(resolver: (Long) -> Boolean) { isChatMuted = resolver }
     private val healthLock = Any()
     private val _health = MutableStateFlow(NotificationHealth())
     val health = _health.asStateFlow()
@@ -130,7 +132,7 @@ class GlaciaNotifications(context: Context) {
         ) }
         val id = update.notificationGroupId
         if (update.totalCount <= 0) {
-            manager.cancel("chat:${update.chatId}:group:$id", id)
+            manager.cancel(NotificationPolicy.notificationTag(update.chatId, id), id)
             synchronized(groupLock) {
                 activeGroups.remove(id)
                 refreshSummary()
@@ -143,8 +145,14 @@ class GlaciaNotifications(context: Context) {
             record { it.copy(lastDecision = "TDLib group updated without new notifications") }
             return
         }
-        if (foreground && visibleChatId == update.chatId) {
-            record { it.copy(lastDecision = "Open conversation: duplicate Android alert suppressed") }
+        if (!NotificationPolicy.shouldShow(
+                foreground, visibleChatId, update.chatId, isChatMuted(update.chatId)
+            )) {
+            record {
+                it.copy(lastDecision = if (isChatMuted(update.chatId))
+                    "Chat muted: alert suppressed"
+                else "Open conversation: duplicate Android alert suppressed")
+            }
             return
         }
         if (!hasPermission()) {
@@ -188,7 +196,7 @@ class GlaciaNotifications(context: Context) {
         try {
             // One active notification per TDLib notification group; multiple chats
             // remain independent child notifications beneath an Android summary.
-            manager.notify("chat:${update.chatId}:group:$id", id, notification)
+            manager.notify(NotificationPolicy.notificationTag(update.chatId, id), id, notification)
             synchronized(groupLock) {
                 activeGroups[id] = update.chatId
                 refreshSummary()
