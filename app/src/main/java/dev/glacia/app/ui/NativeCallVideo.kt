@@ -45,7 +45,7 @@ internal fun NativeCallVideo(frames: SharedFlow<Frame>, callId: Int) {
 }
 
 private fun renderRemoteFrame(renderer: SurfaceViewRenderer, native: Frame) {
-    val info = native.frameData ?: return
+    val info = native.frame_data ?: return
     val w = info.width
     val h = info.height
     if (w !in 2..1920 || h !in 2..1080 || w % 2 != 0 || h % 2 != 0) return
@@ -63,7 +63,7 @@ private fun renderRemoteFrame(renderer: SurfaceViewRenderer, native: Frame) {
     val v = bytes.duplicate().apply { position(ySize + cSize); limit(size) }.slice()
     val image = JavaI420Buffer.wrap(w, h, y, w, u, w / 2, v, w / 2) { }
     val rotated = ((info.rotation % 360) + 360) % 360
-    val frame = VideoFrame(image, rotated, info.absoluteCaptureTimestampMs * 1_000_000L)
+    val frame = VideoFrame(image, rotated, info.absolute_capture_timestamp_ms * 1_000_000L)
     renderer.onFrame(frame)
     frame.release()
 }
