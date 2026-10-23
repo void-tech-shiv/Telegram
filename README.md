@@ -2,7 +2,23 @@
 
 Independent Android Telegram client developed in **Kotlin + Jetpack Compose + TDLib**. Midnight Glass and Frosted Daylight themes, TDLib Telegram session, real chats/messaging, images/documents, Media3 video/voice playback, Discover search, unread filters, read receipts and typing indicators.
 
-## Experimental developer build: v0.3.14 (Phase 3.9 — native voice/video work)
+## Experimental developer build: v0.3.15 (Phase 3.10 — full-screen calling UI)
+
+**Branch:** `feature/phase-3-10-liquid-glass-calls` · **Status:** draft PR #18; review before merging.
+
+- The user confirmed real two-way Phase 3.9 audio and video on device. This
+  branch **preserves that working engine** and replaces the call popup with a
+  full-screen Liquid Glass overlay, remote video background, mirrored local
+  video preview, camera flip, and a monotonic call timer.
+- Mute/speaker/answer/hangup remain wired to real TDLib/NTgCalls calls.
+- **New camera preview and flip still need real-device QA.** An optional
+  Android 12+ Bluetooth route button now selects already-connected headsets,
+  requesting permission only when tapped; device QA is still required.
+  Background/ongoing-call service and native dependency review remain open.
+- See `docs/PHASE3_10.md` for exact Windows Git/build/install instructions
+  and the full two-account device test matrix.
+
+## Previous experimental developer build: v0.3.14 (Phase 3.9 — native voice/video work)
 
 **Branch:** `feature/phase-3-9-native-media-bootstrap` · **Status:** unverified experimental calling; keep draft. **Normal builds keep calling disabled and use external official Telegram handoff.**
 
@@ -52,7 +68,7 @@ Independent Android Telegram client developed in **Kotlin + Jetpack Compose + TD
 ```powershell
 cd D:\telegram\Telegram
 git fetch origin
-git switch --track origin/feature/phase-3-9-native-media-bootstrap
+git switch --track origin/feature/phase-3-10-liquid-glass-calls
 .\gradlew.bat :app:assembleDebug :app:testDebugUnitTest "-Pglacia.experimentalNativeCalls=true"
 ```
 

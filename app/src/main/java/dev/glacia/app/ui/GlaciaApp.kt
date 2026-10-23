@@ -269,6 +269,22 @@ private fun GlaciaApp(
         }
     }
 
+    // Android 12+ requires explicit consent before selecting a Bluetooth
+    // communication device. No headset permission is requested at startup.
+    val bluetoothPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) session.bluetoothNativeCall()
+    }
+    fun requestBluetoothAudio() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        if (androidx.core.content.ContextCompat.checkSelfPermission(
+                deviceContext, Manifest.permission.BLUETOOTH_CONNECT
+            ) == PackageManager.PERMISSION_GRANTED) {
+            session.bluetoothNativeCall()
+        } else bluetoothPermission.launch(Manifest.permission.BLUETOOTH_CONNECT)
+    }
+
     val inAppCall by session.nativeCall.collectAsState()
     val inAppCallNotice by session.nativeCallNotice.collectAsState()
     inAppCallNotice?.let { notice ->
@@ -281,40 +297,19 @@ private fun GlaciaApp(
             }
         )
     }
+    // Phase 3.10: dialog-free Liquid Glass overlay. It is scoped to TDLib's
+    // actual active call; returning to chats cannot accidentally hang up.
     inAppCall?.let { running ->
-        AlertDialog(
-            onDismissRequest = { /* Ongoing native sessions require Hang up. */ },
-            title = { Text(if (running.video) "GLACIA video call" else "GLACIA voice call") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(running.peer, fontWeight = FontWeight.SemiBold)
-                    Text(running.phase)
-                    running.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                    if (running.video && running.phase == "Connected") {
-                        NativeCallVideo(session.remoteCallFrames, running.callId)
-                    }
-                    if (running.phase == "Connected") {
-                        Row {
-                            TextButton(onClick = { session.muteNativeCall(!running.muted) }) {
-                                Text(if (running.muted) "Unmute mic" else "Mute mic")
-                            }
-                            TextButton(onClick = { session.speakerNativeCall(!running.speaker) }) {
-                                Text(if (running.speaker) "Earpiece" else "Speaker")
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                if (!running.outgoing && running.phase == "Incoming") {
-                    TextButton(onClick = { requestNativeAction(0L, running.video) }) {
-                        Text("Answer in GLACIA")
-                    }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = session::hangupNativeCall) { Text("Hang up / Decline") }
-            }
+        NativeCallScreen(
+            call = running,
+            remoteFrames = session.remoteCallFrames,
+            localFrames = session.localCallFrames,
+            onAnswer = { requestNativeAction(0L, running.video) },
+            onHangUp = session::hangupNativeCall,
+            onMute = { session.muteNativeCall(!running.muted) },
+            onSpeaker = { session.speakerNativeCall(!running.speaker) },
+            onBluetooth = { requestBluetoothAudio() },
+            onCameraSwitch = session::switchNativeCamera
         )
     }
     if (callHandoffPrompt && current != null) {

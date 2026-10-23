@@ -1,14 +1,11 @@
 package dev.glacia.app.ui
 
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import io.github.pytgcalls.models.Frame
 import kotlinx.coroutines.flow.SharedFlow
@@ -23,13 +20,21 @@ import java.nio.ByteBuffer
  * simulates or synthesizes video. EGL and Surface lifetimes are tied to Compose.
  */
 @Composable
-internal fun NativeCallVideo(frames: SharedFlow<Frame>, callId: Int) {
+internal fun NativeCallVideo(
+    frames: SharedFlow<Frame>,
+    callId: Int,
+    modifier: Modifier = Modifier,
+    mirrored: Boolean = false
+) {
     val context = LocalContext.current
     val egl = remember(callId) { EglBase.create() }
     val renderer = remember(callId) { SurfaceViewRenderer(context) }
     DisposableEffect(egl, renderer) {
         renderer.init(egl.eglBaseContext, null)
         renderer.setEnableHardwareScaler(true)
+        renderer.setMirror(mirrored)
+        // The local camera thumbnail is a second SurfaceView above remote video.
+        renderer.setZOrderMediaOverlay(mirrored)
         onDispose {
             renderer.release()
             egl.release()
@@ -40,7 +45,7 @@ internal fun NativeCallVideo(frames: SharedFlow<Frame>, callId: Int) {
     }
     AndroidView(
         factory = { renderer },
-        modifier = Modifier.fillMaxWidth().height(240.dp)
+        modifier = modifier
     )
 }
 
