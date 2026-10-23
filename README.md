@@ -2,7 +2,23 @@
 
 Independent Android Telegram client developed in **Kotlin + Jetpack Compose + TDLib**. Midnight Glass and Frosted Daylight themes, TDLib Telegram session, real chats/messaging, images/documents, Media3 video/voice playback, Discover search, unread filters, read receipts and typing indicators.
 
-## Experimental hotfix: v0.3.21 (Phase 3.14 — animated sticker rendering)
+## Experimental developer build: v0.3.22 (Phase 4 — core Telegram)
+
+**Branch:** `feature/phase-4-core-account-contacts` · **Status:** draft, real-device QA pending.
+
+- **Settings:** live Telegram account profile and confirmed per-device logout,
+  alongside existing appearance/notification options.
+- **Profile:** authenticated user's actual name, avatar, username and bio,
+  with real TDLib `SetName` / `SetBio` editing and server confirmation.
+- **Contacts:** real Telegram cloud contact list, local name/username search,
+  photo previews, and tap-to-open real private Telegram chats; **no device
+  contacts permission or address-book upload**.
+- **Chats:** existing chat lists, archive/pin, message search, actions,
+  voice/video calling, background call controls and media code preserved.
+- These features do not yet equal complete Telegram settings/contact/profile
+  parity. See `docs/PHASE4_CORE.md` for limitations and exact Windows commands.
+
+## Previous experimental hotfix: v0.3.21 (Phase 3.14 — animated sticker rendering)
 
 **Branch:** `fix/phase-3-14-sticker-gif-rendering` · **Status:** draft PR #26, phone QA pending.
 

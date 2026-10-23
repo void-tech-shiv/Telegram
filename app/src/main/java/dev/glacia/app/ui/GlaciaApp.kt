@@ -35,6 +35,7 @@ import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.Contacts
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.material3.*
@@ -62,6 +63,7 @@ import dev.chrisbanes.haze.rememberHazeState
 import dev.chrisbanes.haze.glass.GlassStyle
 import dev.chrisbanes.haze.glass.hazeGlass
 import dev.glacia.app.data.Chat
+import dev.glacia.app.data.CoreAccountState
 import dev.glacia.app.data.ChatFilter
 import dev.glacia.app.data.ChatFilters
 import coil3.compose.AsyncImage
@@ -215,6 +217,7 @@ private fun GlaciaApp(
     onThemeChange: (ThemeChoice) -> Unit
 ) {
     val hazeState = rememberHazeState()
+    val coreScope = rememberCoroutineScope()
     var tab by rememberSaveable { mutableStateOf("Chats") }
     var openChatId by rememberSaveable { mutableStateOf<Long?>(null) }
     var query by rememberSaveable { mutableStateOf("") }
@@ -230,6 +233,10 @@ private fun GlaciaApp(
     val notificationTarget by session.notificationTargetChat.collectAsState()
     val chatMuteStates by session.chatMuteStates.collectAsState()
     val expressions by session.expressionState.collectAsState()
+    val coreAccount by session.accountState.collectAsState()
+    LaunchedEffect(tab) {
+        if (tab == "Contacts" || tab == "Settings") session.refreshCoreAccount()
+    }
     LaunchedEffect(notificationChatId, notificationTarget?.id, liveChats) {
         val id = notificationChatId ?: return@LaunchedEffect
         if (id == 0L) return@LaunchedEffect
@@ -629,6 +636,31 @@ private fun GlaciaApp(
                             dark = dark,
                             onOpen = { openChatId = it.id }
                         )
+                        "Contacts" -> CoreContactsScreen(
+                            state = coreAccount,
+                            filePaths = photoPaths,
+                            dark = dark,
+                            onRefresh = session::refreshCoreAccount,
+                            onDismissNotice = session::clearAccountNotice,
+                            onOpenSavedMessages = {
+                                session.openSavedMessages { chatId ->
+                                    coreScope.launch {
+                                        session.ensureChat(chatId)
+                                        openChatId = chatId
+                                        tab = "Chats"
+                                    }
+                                }
+                            },
+                            onOpenContact = { userId ->
+                                session.openContactChat(userId) { chatId ->
+                                    coreScope.launch {
+                                        session.ensureChat(chatId)
+                                        openChatId = chatId
+                                        tab = "Chats"
+                                    }
+                                }
+                            }
+                        )
                         "Discover" -> TelegramDiscoverScreen(
                             dark = dark,
                             photoPaths = photoPaths,
@@ -642,6 +674,11 @@ private fun GlaciaApp(
                         )
                         else -> SettingsScreen(
                             selectedTheme, dark, onThemeChange,
+                            coreAccount, photoPaths,
+                            session::refreshCoreAccount,
+                            session::updateOwnProfile,
+                            session::clearAccountNotice,
+                            session::logoutThisDevice,
                             notificationPermission, onNotificationPermission,
                             onTestNotification, onOpenNotificationSettings,
                             notificationSetup, notificationEvents, notificationHealth,
@@ -666,6 +703,9 @@ private fun GlaciaApp(
                     ) {
                         NavigationTab("Chats", tab == "Chats", dark, Icons.Rounded.ChatBubbleOutline) {
                             tab = "Chats"
+                        }
+                        NavigationTab("Contacts", tab == "Contacts", dark, Icons.Rounded.Contacts) {
+                            tab = "Contacts"
                         }
                         NavigationTab("Discover", tab == "Discover", dark, Icons.Rounded.Explore) {
                             tab = "Discover"
@@ -985,6 +1025,12 @@ private fun SettingsScreen(
     selected: ThemeChoice,
     dark: Boolean,
     onSelect: (ThemeChoice) -> Unit,
+    coreAccount: CoreAccountState,
+    filePaths: Map<Int, String>,
+    onRefreshProfile: () -> Unit,
+    onSaveProfile: (String, String, String) -> Unit,
+    onDismissProfileNotice: () -> Unit,
+    onLogout: () -> Unit,
     notificationPermission: Boolean,
     onNotificationPermission: () -> Unit,
     onTestNotification: () -> Boolean,
@@ -995,12 +1041,44 @@ private fun SettingsScreen(
     pushStatus: String
 ) {
     var notificationTestResult by remember { mutableStateOf<String?>(null) }
+    var logoutConfirmation by remember { mutableStateOf(false) }
+    if (logoutConfirmation) {
+        AlertDialog(
+            onDismissRequest = { logoutConfirmation = false },
+            title = { Text("Log out of GLACIA?") },
+            text = { Text("This will end this Telegram session on this device. " +
+                "Your Telegram cloud messages and other logged-in devices remain unaffected.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    logoutConfirmation = false
+                    onLogout()
+                }) { Text("Log out") }
+            },
+            dismissButton = {
+                TextButton(onClick = { logoutConfirmation = false }) { Text("Cancel") }
+            }
+        )
+    }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())
         .padding(horizontal = 23.dp, vertical = 18.dp)) {
-        Text("Appearance", color = ink(dark), fontSize = 29.sp, fontWeight = FontWeight.Bold)
+        Text("Settings", color = ink(dark), fontSize = 29.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(7.dp))
+        Text("Your Telegram account and GLACIA preferences.", color = mutedInk(dark))
+        Spacer(Modifier.height(18.dp))
+        CoreProfileSection(
+            state = coreAccount,
+            filePaths = filePaths,
+            dark = dark,
+            onRefresh = onRefreshProfile,
+            onSave = onSaveProfile,
+            onDismissNotice = onDismissProfileNotice
+        )
+        Spacer(Modifier.height(23.dp))
+        Text("APPEARANCE", color = accent(dark),
+            fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp, fontSize = 11.sp)
+        Spacer(Modifier.height(6.dp))
         Text("Choose your perfect glass.", color = mutedInk(dark))
-        Spacer(Modifier.height(22.dp))
+        Spacer(Modifier.height(12.dp))
         ThemeChoice.entries.forEach { option ->
             Row(
                 Modifier.fillMaxWidth().padding(vertical = 6.dp)
@@ -1089,7 +1167,7 @@ private fun SettingsScreen(
             color = mutedInk(dark), fontSize = 12.sp
         )
         Spacer(Modifier.height(24.dp))
-        Text("GLACIA  •  v0.3.9", color = accent(dark),
+        Text("GLACIA  •  v${BuildConfig.VERSION_NAME}", color = accent(dark),
             fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp, fontSize = 11.sp)
         Spacer(Modifier.height(8.dp))
         Text("Experimental Telegram client", color = ink(dark),
@@ -1105,10 +1183,15 @@ private fun SettingsScreen(
             fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp, fontSize = 11.sp)
         Spacer(Modifier.height(7.dp))
         Text(
-            "Full in-app voice/video calling is not yet available (call button opens contact " +
-                "in official Telegram). Background push after force-stop, advanced search, " +
-                "and media upload cleanup still need work.",
+            "Native 1:1 voice/video calls are experimental. Telegram profile name and bio " +
+                "can be edited here; username, privacy rules, multi-account and full " +
+                "contact-management tools are planned. Background push after force-stop " +
+                "is not guaranteed.",
             color = mutedInk(dark), fontSize = 13.sp, lineHeight = 20.sp
         )
+        Spacer(Modifier.height(19.dp))
+        TextButton(onClick = { logoutConfirmation = true }) {
+            Text("Log out of this device", color = MaterialTheme.colorScheme.error)
+        }
     }
 }

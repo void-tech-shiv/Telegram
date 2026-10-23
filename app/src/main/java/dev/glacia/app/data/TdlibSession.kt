@@ -83,6 +83,15 @@ class TdlibSession(private val context: Context) {
     private var client: Client? = null
     private val fileStore = TdlibFileStore { client }
     private val discovery = TdlibDiscovery({ client }, fileStore)
+    private val coreAccount = TdlibCoreAccount({ client }, fileStore)
+    val accountState = coreAccount.state
+    fun refreshCoreAccount() = coreAccount.refresh()
+    fun updateOwnProfile(first: String, last: String, bio: String) =
+        coreAccount.saveProfile(first, last, bio)
+    fun openContactChat(userId: Long, onChat: (Long) -> Unit) =
+        coreAccount.openContact(userId, onChat)
+    fun openSavedMessages(onChat: (Long) -> Unit) = coreAccount.openSavedMessages(onChat)
+    fun clearAccountNotice() = coreAccount.clearNotice()
     private val typing = TdlibTyping { client }
     private val notifications = GlaciaNotifications(context)
     private val incomingCallAlerts = IncomingCallAlerts(context)
@@ -506,6 +515,7 @@ class TdlibSession(private val context: Context) {
         }
         // Chat headers and message timelines share the same authorized TDLib client.
         fileStore.onUpdate(obj)
+        coreAccount.onUpdate(obj)
         messaging.onUpdate(obj)
         callInbox.onUpdate(obj)
         nativeCalls.onUpdate(obj)
@@ -614,10 +624,12 @@ class TdlibSession(private val context: Context) {
                 }
                 request(TdApi.LoadChats(TdApi.ChatListMain(), 100), "Chat sync")
                 loadArchivedChats()
+                refreshCoreAccount()
             }
             is TdApi.AuthorizationStateClosed -> {
                 messaging.clear()
                 expressions.clear()
+                coreAccount.clear()
                 messageSearch.clearAll()
                 messageActions.clear()
                 callInbox.clear()
@@ -735,11 +747,21 @@ class TdlibSession(private val context: Context) {
     }
 
     fun submitPassword(password: String) = request(TdApi.CheckAuthenticationPassword(password), "Two-step password")
+    /** Explicit user-confirmed account logout. Does not log out other devices. */
+    fun logoutThisDevice() {
+        if (_auth.value !is Auth.Ready) return
+        client?.send(TdApi.LogOut()) { response ->
+            if (response is TdApi.Error) {
+                _notice.value = "Telegram logout failed (code ${response.code})."
+            }
+        }
+    }
 
     fun close() {
         typing.clear()
         messageSearch.clearAll()
         expressions.clear()
+        coreAccount.clear()
         callInbox.clear()
         nativeCalls.clear()
         incomingCallAlerts.clear()
