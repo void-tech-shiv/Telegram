@@ -138,8 +138,12 @@ class GlaciaCallService : Service() {
         if (!foregroundStarted) {
             try {
                 val notification = buildNotification(video, "Preparing secure call")
-                val serviceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
-                    if (video) ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA else 0
+                // Microphone and camera foreground types were introduced on
+                // Android 11; avoid passing unsupported type bits on Android 10.
+                val serviceType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
+                        if (video) ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA else 0
+                } else 0
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     startForeground(NOTIFICATION_ID, notification, serviceType)
                 } else startForeground(NOTIFICATION_ID, notification)
