@@ -1,33 +1,47 @@
-# GLACIA — Phase 2
+# GLACIA — Liquid Glass Telegram Client
 
-Kotlin/Compose Android Telegram client with dark/light Liquid Glass design.
+A Kotlin + Jetpack Compose third-party Telegram client backed by TDLib with dark/light Liquid Glass themes.
 
-**Phase 2 branch:** TDLib native integration, phone verification, two-step password handling, and a **read-only live Main chat list**. Real messaging, history, media, notifications, email-based login and account creation are **not implemented**. No demo messages are sent or shown as live messages.
+## Current milestone: Phase 3 (draft / experimental)
 
-## Local setup
+**Available on `feature/phase-3-messaging`:**
+- Telegram phone / verification code / two-step password authorization
+- Real Main chat list, search across loaded chat titles and previews
+- Chat history, older-message pages, and real-time message updates
+- Real plain-text sending, delivery/error status, and message deduplication
+- Media message *labels* (actual display / downloading is not yet implemented)
+- Midnight Glass, Frosted Daylight, Follow System appearance
 
-1. Get your own API credentials from https://my.telegram.org/apps.
-2. Put these values in untracked `local.properties` at the project root (alongside `sdk.dir`):
+**This is an early development build, not a full Telegram replacement.** Calls, media viewing/upload, push notifications, global search and group-topic support are unfinished. Open a test conversation before trusting it for everyday communication.
+
+## Local Android build
+
+Requirements: Android Studio, JDK 17, API 37 Android SDK, and a device or emulator.
+
+1. Clone `https://github.com/void-tech-shiv/Telegram.git`.
+2. Checkout `feature/phase-3-messaging`.
+3. Obtain Telegram API ID/hash from `https://my.telegram.org/apps`.
+4. Create / edit **untracked** `local.properties` at project root and preserve your existing SDK path:
 
 ```properties
-telegram.apiId=123456
-telegram.apiHash=your_own_private_hash
+telegram.apiId=YOUR_NUMERIC_ID
+telegram.apiHash=YOUR_PRIVATE_API_HASH
 ```
 
-3. Open in Android Studio and run `./gradlew :app:assembleDebug`.
-4. The public CI builds without credentials and therefore opens the setup-required screen.
-5. Enter your own phone in international format, the code Telegram delivers, and 2FA password when required.
+5. Gradle Sync; run `./gradlew :app:assembleDebug :app:testDebugUnitTest` (or `gradlew.bat` on Windows).
+6. Use Android Studio Run. Upgrade over existing GLACIA without deleting app data if preserving your TDLib session.
 
-**Do not commit or send API credentials, login codes or passwords.** `BuildConfig` values are embedded in APKs, not secret storage; don't publicly distribute a personally configured APK.
+**Never commit your API hash or share a personally configured APK.** The API hash is packaged in the app at build time and is extractable. Public GitHub Actions builds have placeholder credentials by design.
 
-See [Phase 2 implementation and limits](docs/PHASE2.md).
+## Project layout
 
-## Current scope
-- Material3 Compose + Haze 2.0.1 Liquid Glass dark/light themes
-- Live TDLib session with private app database and lifecycle updates
-- Phone/code/2FA auth and live Main chat list titles/previews/unread badges
-- Read-only message view placeholder so users cannot mistake demo content for actual conversations
-- Explicit unsupported branches for email, registration and additional auth flows
-- Phase 3: chat histories, real sends, live updates, downloads and multiple accounts
+- `app/data/TdlibSession.kt` — authorization, chat headers and TDLib client lifecycle
+- `app/data/TdlibMessages.kt` — chat history, real sends and live TDLib events
+- `app/data/MessageReducer.kt` — deterministic message merge/delete logic
+- `app/ui/GlaciaApp.kt` — adaptive Liquid Glass navigation and chat list
+- `app/ui/ConversationScreen.kt` — live message bubbles and composer
+- `app/settings/ThemePreferences.kt` — DataStore theme settings
+- `app/src/test/` — JVM unit tests
+- `docs/PHASE2.md`, `docs/PHASE3.md` — implementation notes / test checklists
 
-GLACIA is independent and not affiliated with Telegram. Native TDLib core is community packaged: verify security/provenance before using a sensitive account.
+GLACIA is independent and not affiliated with Telegram. Native TDLib core comes from a community packaging project; verify the binary provenance and security posture before handling sensitive accounts.
