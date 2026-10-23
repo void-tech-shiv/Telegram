@@ -66,6 +66,12 @@ class TdlibSession(private val context: Context) {
     private val missingTitleRefreshes = mutableSetOf<Long>()
     private var client: Client? = null
     private val fileStore = TdlibFileStore { client }
+    private val discovery = TdlibDiscovery({ client }, fileStore)
+    val discoveryResults = discovery.results
+    val discoveryLoading = discovery.loading
+    val discoveryError = discovery.error
+    fun searchTelegramChats(query: String) = discovery.search(query)
+
     val filePaths = fileStore.paths
     val documentTransfers = fileStore.transfers
     fun requestDocumentDownload(fileId: Int) = fileStore.requestDocument(fileId)
@@ -237,6 +243,7 @@ class TdlibSession(private val context: Context) {
             }
             is TdApi.AuthorizationStateClosed -> {
                 messaging.clear()
+                discovery.clear()
                 fileStore.clear()
                 synchronized(known) {
                     known.clear()
@@ -284,7 +291,7 @@ class TdlibSession(private val context: Context) {
                 .thenByDescending { it.first.id })
             .map { (chat, _) ->
                 val preview = when (val content = chat.lastMessage?.content) {
-                    is TdApi.MessageText -> content.text?.text.orEmpty()
+                    is TdApi.MessageText -> ChatPreviewPrivacy.safePreview(content.text?.text.orEmpty())
                     is TdApi.MessagePhoto -> "📷 Photo"
                     is TdApi.MessageVideo -> "🎥 Video"
                     is TdApi.MessageVoiceNote -> "🎤 Voice note"
@@ -306,7 +313,8 @@ class TdlibSession(private val context: Context) {
                     preview = preview,
                     time = "",
                     unread = chat.unreadCount,
-                    isGroup = chat.type !is TdApi.ChatTypePrivate,
+                    isGroup = chat.type is TdApi.ChatTypeBasicGroup ||
+                        chat.type is TdApi.ChatTypeSupergroup,
                     photoFileId = chat.photo?.small?.id
                 )
             }.toList()

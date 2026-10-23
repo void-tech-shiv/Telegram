@@ -1,47 +1,59 @@
 # GLACIA — Liquid Glass Telegram Client
 
-A Kotlin + Jetpack Compose third-party Telegram client backed by TDLib with dark/light Liquid Glass themes.
+Independent Android Telegram client built from scratch with **Kotlin, Jetpack Compose and TDLib**. Supports Midnight Glass, Frosted Daylight and the system theme.
 
-## Current milestone: Phase 3 (draft / experimental)
+## Current developer build: v0.3.4 — Phase 3.3
 
-**Available on `feature/phase-3-messaging`:**
-- Telegram phone / verification code / two-step password authorization
-- Real Main chat list, search across loaded chat titles and previews
-- Chat history, older-message pages, and real-time message updates
-- Real plain-text sending, delivery/error status, and message deduplication
-- Media message *labels* (actual display / downloading is not yet implemented)
-- Midnight Glass, Frosted Daylight, Follow System appearance
+**Branch:** `feature/phase-3-3-cherry-inspired` · **Status:** experimental / draft PR
 
-**This is an early development build, not a full Telegram replacement.** Calls, media viewing/upload, push notifications, global search and group-topic support are unfinished. Open a test conversation before trusting it for everyday communication.
+What is implemented in this branch:
+- Telegram authorization, chat list, real messages and text sending
+- Chat history pagination, media thumbnails and private TDLib downloads
+- Local photo viewer, Save As via Android system picker, original video/audio/voice playback (Media3)
+- Chat productivity tabs: **All / Unread / Groups / Private**
+- **Real Telegram Discover** using TDLib local chat lookup and public user/group/channel search; debounced input, clickable results
+- Kotlin Compose responsive Liquid Glass panels in dark/light
 
-## Local Android build
+Not yet included: full text-content search across all Telegram messages, push notifications, sending image/video attachments, voice recording, read receipts, typing indicators, reactions, calls and full parity with Telegram. Public search may be restricted by Telegram server/account permissions.
 
-Requirements: Android Studio, JDK 17, API 37 Android SDK, and a device or emulator.
+## Quick local build (Windows)
 
-1. Clone `https://github.com/void-tech-shiv/Telegram.git`.
-2. Checkout `feature/phase-3-messaging`.
-3. Obtain Telegram API ID/hash from `https://my.telegram.org/apps`.
-4. Create / edit **untracked** `local.properties` at project root and preserve your existing SDK path:
+Prerequisites: Android Studio, Java 17, Android SDK with API 37, Android device/emulator.
+
+```powershell
+git clone https://github.com/void-tech-shiv/Telegram.git
+cd Telegram
+git switch --track origin/feature/phase-3-3-cherry-inspired
+```
+
+In the project's **untracked** `local.properties` keep your Android SDK path and set **your own** Telegram API credentials from [my.telegram.org/apps](https://my.telegram.org/apps):
 
 ```properties
-telegram.apiId=YOUR_NUMERIC_ID
+telegram.apiId=YOUR_NUMERIC_API_ID
 telegram.apiHash=YOUR_PRIVATE_API_HASH
 ```
 
-5. Gradle Sync; run `./gradlew :app:assembleDebug :app:testDebugUnitTest` (or `gradlew.bat` on Windows).
-6. Use Android Studio Run. Upgrade over existing GLACIA without deleting app data if preserving your TDLib session.
+Then build/test:
 
-**Never commit your API hash or share a personally configured APK.** The API hash is packaged in the app at build time and is extractable. Public GitHub Actions builds have placeholder credentials by design.
+```powershell
+.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest
+```
 
-## Project layout
+Use Android Studio's **Run** button to install over your prior GLACIA build. Don't uninstall/clear app data if you need to preserve the existing Telegram session. Never commit `local.properties`, API hash, a configured APK, TDLib database files, or personal message logs. Public CI APKs intentionally have no usable Telegram API credentials.
 
-- `app/data/TdlibSession.kt` — authorization, chat headers and TDLib client lifecycle
-- `app/data/TdlibMessages.kt` — chat history, real sends and live TDLib events
-- `app/data/MessageReducer.kt` — deterministic message merge/delete logic
-- `app/ui/GlaciaApp.kt` — adaptive Liquid Glass navigation and chat list
-- `app/ui/ConversationScreen.kt` — live message bubbles and composer
-- `app/settings/ThemePreferences.kt` — DataStore theme settings
-- `app/src/test/` — JVM unit tests
-- `docs/PHASE2.md`, `docs/PHASE3.md` — implementation notes / test checklists
+## Project components
 
-GLACIA is independent and not affiliated with Telegram. Native TDLib core comes from a community packaging project; verify the binary provenance and security posture before handling sensitive accounts.
+- `app/src/main/java/dev/glacia/app/data/TdlibSession.kt` — authorization, chat state and TDLib lifecycle
+- `.../data/TdlibMessages.kt` — history, text sends, updates and media metadata
+- `.../data/TdlibDiscovery.kt` — Telegram local/public search and stale-response protection
+- `.../data/ChatFilters.kt` — chat filtering rules
+- `.../ui/GlaciaApp.kt` — navigation and themes
+- `.../ui/TelegramDiscoverScreen.kt` — real Discover UI
+- `.../ui/GlaciaPlaybackDialog.kt` — local-only Media3 playback
+- `docs/PHASE3_3.md` — licensing notes and Android QA guide
+
+## Open-source inspiration
+
+Thanks to [Cherrygram](https://github.com/arsLan4k1390/Cherrygram) for inspiration around customizable chat workflows and modular feature organization. Cherrygram is based on the Telegram Android app and is distributed under **GPLv2-or-later**. **No Cherrygram source files or assets have been copied or merged** into GLACIA; adaptations are written independently on TDLib + Compose. Directly incorporating Cherrygram source would require a separate licensing/attribution review.
+
+GLACIA is not affiliated with Telegram or the Cherrygram developers. This is not a production-stable client yet; audit the packaged TDLib native dependency and test with a separate account before relying on it for sensitive chats.
