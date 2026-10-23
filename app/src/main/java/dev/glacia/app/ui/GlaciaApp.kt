@@ -55,6 +55,10 @@ import dev.glacia.app.data.TdlibSession
 import dev.glacia.app.settings.ThemeChoice
 import dev.glacia.app.settings.ThemePreferences
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.awaitCancellation
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 
 @Composable
 fun GlaciaRoot() {
@@ -137,8 +141,25 @@ private fun GlaciaApp(
     val loadingChats by session.historyLoading.collectAsState()
     val documentTransfers by session.documentTransfers.collectAsState()
     val messageErrors by session.messageErrors.collectAsState()
+    val outboxRead by session.outboxRead.collectAsState()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var resumed by remember(lifecycleOwner) {
+        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+    }
+    DisposableEffect(lifecycleOwner) {
+        val watcher = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) resumed = true
+            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) resumed = false
+        }
+        lifecycleOwner.lifecycle.addObserver(watcher)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(watcher) }
+    }
     LaunchedEffect(current?.id) {
-        current?.let { session.loadHistory(it.id) }
+        val chatId = current?.id ?: return@LaunchedEffect
+        session.openChat(chatId)
+        session.loadHistory(chatId)
+        try { awaitCancellation() }
+        finally { session.closeChat(chatId) }
     }
 
     BackHandler(enabled = current != null) { openChatId = null }
@@ -201,6 +222,11 @@ private fun GlaciaApp(
                         loading = current.id in loadingChats,
                         error = messageErrors[current.id],
                         dark = dark,
+                        lastReadOutboxId = outboxRead[current.id] ?: 0L,
+                        active = resumed,
+                        onVisibleMessages = { ids ->
+                            session.viewVisibleMessages(current.id, ids)
+                        },
                         onSend = { text -> session.sendText(current.id, text) },
                         onLoadMore = {
                             val earliestId = messagesByChat[current.id]?.firstOrNull()?.id ?: 0L
@@ -544,15 +570,15 @@ private fun SettingsScreen(selected: ThemeChoice, dark: Boolean, onSelect: (Them
             }
         }
         Spacer(Modifier.height(24.dp))
-        Text("GLACIA  •  v0.3.4", color = accent(dark),
+        Text("GLACIA  •  v0.3.5", color = accent(dark),
             fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp, fontSize = 11.sp)
         Spacer(Modifier.height(8.dp))
         Text("Experimental Telegram client", color = ink(dark),
             fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
         Spacer(Modifier.height(8.dp))
         Text(
-            "Available: real Telegram chats, text messaging, photos, file downloads, " +
-                "video and audio playback, chat filters, and Telegram Discover search.",
+            "Available: real Telegram chats, text messaging, photos, files, video/audio " +
+                "playback, chat filters, Discover search, and experimental read checks.",
             color = mutedInk(dark), fontSize = 13.sp, lineHeight = 20.sp
         )
         Spacer(Modifier.height(14.dp))
@@ -560,8 +586,8 @@ private fun SettingsScreen(selected: ThemeChoice, dark: Boolean, onSelect: (Them
             fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp, fontSize = 11.sp)
         Spacer(Modifier.height(7.dp))
         Text(
-            "Notifications, typing indicators, read receipts, voice recording, " +
-                "attachment sending and full message search are not ready yet.",
+            "Notifications, typing indicators, voice recording, attachment sending and " +
+                "full message search are not ready yet. Group read receipts remain limited.",
             color = mutedInk(dark), fontSize = 13.sp, lineHeight = 20.sp
         )
     }

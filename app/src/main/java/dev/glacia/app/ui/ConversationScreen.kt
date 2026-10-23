@@ -41,6 +41,9 @@ import dev.glacia.app.data.DocumentKind
 import dev.glacia.app.data.FileTransfer
 import dev.glacia.app.data.Chat
 import dev.glacia.app.data.Message
+import dev.glacia.app.data.DeliveryReceipts
+import dev.glacia.app.data.DeliveryState
+import kotlinx.coroutines.delay
 import coil3.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
 import java.io.File
@@ -95,6 +98,9 @@ fun ConversationScreen(
     loading: Boolean,
     error: String?,
     dark: Boolean,
+    lastReadOutboxId: Long,
+    active: Boolean,
+    onVisibleMessages: (List<Long>) -> Unit,
     onSend: (String) -> Unit,
     onLoadMore: () -> Unit,
     onDismissError: () -> Unit
@@ -109,12 +115,41 @@ fun ConversationScreen(
     var newestSeen by remember(chat.id) { mutableLongStateOf(Long.MIN_VALUE) }
     var draft by rememberSaveable(chat.id) { mutableStateOf("") }
 
-    // Adding an older history page should not jump the conversation back to bottom.
+    // Only report genuinely visible, incoming messages; never mark the entire
+    // loaded history as read when opening a conversation.
+    val visibleIncoming by remember(chat.id, messages) {
+        derivedStateOf {
+            val layout = timelineState.layoutInfo
+            layout.visibleItemsInfo.mapNotNull { item ->
+                val id = item.key as? Long ?: return@mapNotNull null
+                val visiblePixels = (
+                    minOf(item.offset + item.size, layout.viewportEndOffset) -
+                        maxOf(item.offset, layout.viewportStartOffset)
+                ).coerceAtLeast(0)
+                if (visiblePixels * 2 < item.size) return@mapNotNull null
+                id.takeIf { key ->
+                    key > 0L && messages.any { it.id == key && !it.outgoing }
+                }
+            }.distinct().take(25)
+        }
+    }
+    LaunchedEffect(chat.id, active, visibleIncoming) {
+        if (active && visibleIncoming.isNotEmpty()) {
+            delay(320)
+            onVisibleMessages(visibleIncoming)
+        }
+    }
+
+    // Initially show the latest message. Don't yank the list to the bottom
+    // when a new message arrives while the user is reading older history.
     LaunchedEffect(chat.id, messages.lastOrNull()?.id) {
         val newest = messages.lastOrNull()?.id ?: return@LaunchedEffect
         if (newestSeen != newest) {
+            val initial = newestSeen == Long.MIN_VALUE
+            val nearBottom = timelineState.layoutInfo.visibleItemsInfo
+                .lastOrNull()?.index?.let { it >= messages.size - 3 } ?: true
             newestSeen = newest
-            timelineState.scrollToItem(messages.size)
+            if (initial || nearBottom) timelineState.scrollToItem(messages.size)
         }
     }
     fun send() {
@@ -446,13 +481,21 @@ fun ConversationScreen(
                                 }
                             }
                             Spacer(Modifier.height(5.dp))
+                            val delivery = DeliveryReceipts.status(msg, lastReadOutboxId)
+                            val trailing = when (delivery) {
+                                DeliveryState.FAILED -> "  • Failed"
+                                DeliveryState.SENDING -> "  • Sending"
+                                DeliveryState.SENT -> "  ✓"
+                                DeliveryState.READ -> "  ✓✓"
+                                DeliveryState.NONE -> ""
+                            }
                             Text(
-                                msg.time + when {
-                                    msg.failed -> "  • Failed"
-                                    msg.sending -> "  • Sending"
-                                    else -> ""
+                                msg.time + trailing,
+                                color = when (delivery) {
+                                    DeliveryState.FAILED -> Color(0xFFFF9E9E)
+                                    DeliveryState.READ -> highlight
+                                    else -> secondary
                                 },
-                                color = if (msg.failed) Color(0xFFFF9E9E) else secondary,
                                 fontSize = 10.sp,
                                 modifier = Modifier.align(Alignment.End)
                             )

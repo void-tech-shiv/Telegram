@@ -64,6 +64,11 @@ class TdlibSession(private val context: Context) {
     val chats = _chats.asStateFlow()
     private val known = linkedMapOf<Long, TdApi.Chat>()
     private val missingTitleRefreshes = mutableSetOf<Long>()
+    private val _outboxRead = MutableStateFlow<Map<Long, Long>>(emptyMap())
+    val outboxRead = _outboxRead.asStateFlow()
+    // Avoid duplicate ViewMessages calls as Compose recomposes or scrolls.
+    private val viewLock = Any()
+    private val maxViewedByChat = mutableMapOf<Long, Long>()
     private var client: Client? = null
     private val fileStore = TdlibFileStore { client }
     private val discovery = TdlibDiscovery({ client }, fileStore)
@@ -83,6 +88,43 @@ class TdlibSession(private val context: Context) {
     fun loadHistory(chatId: Long, beforeId: Long = 0L) = messaging.loadHistory(chatId, beforeId)
     fun sendText(chatId: Long, text: String) = messaging.sendText(chatId, text)
     fun dismissMessageError(chatId: Long) = messaging.dismissError(chatId)
+
+    fun openChat(chatId: Long) {
+        client?.send(TdApi.OpenChat().apply { this.chatId = chatId }) { }
+    }
+
+    fun closeChat(chatId: Long) {
+        client?.send(TdApi.CloseChat().apply { this.chatId = chatId }) { }
+    }
+
+    /**
+     * Called only while the conversation is foregrounded with these messages on screen.
+     * Never infer that a chat was read merely from selecting a tab.
+     */
+    fun viewVisibleMessages(chatId: Long, visibleMessageIds: List<Long>) {
+        val ids = visibleMessageIds.filter { it > 0L }.distinct().take(25)
+        if (ids.isEmpty()) return
+        val active = client ?: return
+        val maxId = ids.maxOrNull() ?: return
+        val prior: Long
+        synchronized(viewLock) {
+            prior = maxViewedByChat[chatId] ?: 0L
+            if (maxId <= prior) return
+            maxViewedByChat[chatId] = maxId
+        }
+        active.send(TdApi.ViewMessages().apply {
+            this.chatId = chatId
+            messageIds = ids.toLongArray()
+            source = null
+            forceRead = false
+        }) { result ->
+            if (result is TdApi.Error) {
+                synchronized(viewLock) {
+                    if (maxViewedByChat[chatId] == maxId) maxViewedByChat[chatId] = prior
+                }
+            }
+        }
+    }
 
     @Synchronized fun start() {
         if (client != null) return
@@ -178,7 +220,12 @@ class TdlibSession(private val context: Context) {
         when (obj) {
             is TdApi.UpdateAuthorizationState -> onAuth(obj.authorizationState)
             is TdApi.UpdateNewChat -> {
-                synchronized(known) { known[obj.chat.id] = obj.chat; emitChats() }
+                synchronized(known) {
+                    known[obj.chat.id] = obj.chat
+                    _outboxRead.value = _outboxRead.value +
+                        (obj.chat.id to obj.chat.lastReadOutboxMessageId)
+                    emitChats()
+                }
             }
             is TdApi.UpdateChatTitle -> synchronized(known) {
                 known[obj.chatId]?.title = obj.title; emitChats()
@@ -201,7 +248,18 @@ class TdlibSession(private val context: Context) {
                 emitChats()
             }
             is TdApi.UpdateChatReadInbox -> synchronized(known) {
-                known[obj.chatId]?.unreadCount = obj.unreadCount; emitChats()
+                known[obj.chatId]?.unreadCount = obj.unreadCount
+                // Telegram may mark previously viewed messages unread again from
+                // another device. Permit a fresh ViewMessages acknowledgement.
+                if (obj.unreadCount > 0) {
+                    synchronized(viewLock) { maxViewedByChat.remove(obj.chatId) }
+                }
+                emitChats()
+            }
+            is TdApi.UpdateChatReadOutbox -> synchronized(known) {
+                known[obj.chatId]?.lastReadOutboxMessageId = obj.lastReadOutboxMessageId
+                _outboxRead.value = _outboxRead.value +
+                    (obj.chatId to obj.lastReadOutboxMessageId)
             }
         }
     }
@@ -245,6 +303,8 @@ class TdlibSession(private val context: Context) {
                 messaging.clear()
                 discovery.clear()
                 fileStore.clear()
+                synchronized(viewLock) { maxViewedByChat.clear() }
+                _outboxRead.value = emptyMap()
                 synchronized(known) {
                     known.clear()
                     missingTitleRefreshes.clear()
