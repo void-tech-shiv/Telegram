@@ -9,6 +9,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import org.drinkless.tdlib.Client
 import org.drinkless.tdlib.TdApi
 import java.util.Locale
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * Single-client TDLib session. Authorization updates, not button clicks, govern transitions.
@@ -306,6 +308,50 @@ class TdlibSession(private val context: Context) {
      * Without this SetOption request, UpdateNotificationGroup is never emitted.
      * Configure on every authorized launch to support existing installations.
      */
+    private val _pushStatus = MutableStateFlow(
+        if (BuildConfig.FCM_CONFIGURED) "Push token not registered yet"
+        else "Background push inactive: add app/google-services.json"
+    )
+    val pushStatus = _pushStatus.asStateFlow()
+    fun rememberPushToken(token: String) {
+        if (!BuildConfig.FCM_CONFIGURED || token.isBlank()) return
+        context.getSharedPreferences("glacia_push", Context.MODE_PRIVATE).edit()
+            .putString("token", token).apply()
+        if (_auth.value is Auth.Ready) registerPushToken(token)
+    }
+
+    private fun registerPushToken(token: String) {
+        val active = client ?: return
+        // Additional encrypted Telegram push is processed by TDLib, not exposed
+        // in Android raw notifications.
+        active.send(
+            TdApi.RegisterDevice(
+                TdApi.DeviceTokenFirebaseCloudMessaging(token, true),
+                longArrayOf()
+            )
+        ) { reply ->
+            _pushStatus.value = when (reply) {
+                is TdApi.PushReceiverId -> "TDLib push device registration accepted"
+                is TdApi.Error -> "TDLib push registration rejected (code ${reply.code})"
+                else -> "TDLib push registration returned an unexpected response"
+            }
+        }
+    }
+
+    /** Bounded cold-start TDLib push handling on Firebase's worker thread. */
+    fun processPushPayload(payload: String): Boolean {
+        if (!BuildConfig.FCM_CONFIGURED || payload.isBlank()) return false
+        val active = client ?: return false
+        val finished = CountDownLatch(1)
+        active.send(TdApi.ProcessPushNotification(payload)) { reply ->
+            if (reply is TdApi.Error && reply.code == 406) {
+                _pushStatus.value = "Push received; Telegram sync is required"
+            }
+            finished.countDown()
+        }
+        return finished.await(8L, TimeUnit.SECONDS)
+    }
+
     private fun enableTdlibNotificationApi() {
         val active = client ?: return
         _notificationSetup.value = "Enabling Telegram notification events…"
@@ -418,6 +464,11 @@ class TdlibSession(private val context: Context) {
                 _canResendCode.value = false
                 publishAuth(Auth.Ready)
                 enableTdlibNotificationApi()
+                if (BuildConfig.FCM_CONFIGURED) {
+                    context.getSharedPreferences("glacia_push", Context.MODE_PRIVATE)
+                        .getString("token", null)?.takeIf { it.isNotBlank() }
+                        ?.let(::registerPushToken)
+                }
                 request(TdApi.LoadChats(TdApi.ChatListMain(), 100), "Chat sync")
             }
             is TdApi.AuthorizationStateClosed -> {
