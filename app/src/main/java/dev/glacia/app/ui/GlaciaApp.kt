@@ -802,16 +802,43 @@ private fun GlaciaApp(
                             },
                             onRefresh = session::refreshCoreAccount
                         )
-                        "Discover" -> TelegramDiscoverScreen(
+                        "Discover" -> if (hubSearching) {
+                            Column(Modifier.fillMaxSize().background(coreSurface(dark))) {
+                                CompactPageHeader("Discover Telegram", dark) {
+                                    hubSearching = false
+                                }
+                                Box(Modifier.weight(1f)) {
+                                    TelegramDiscoverScreen(
+                                        dark = dark, photoPaths = photoPaths,
+                                        matches = discovered, loading = discovering,
+                                        error = discoveryError, query = discoverQuery,
+                                        onQueryChange = { discoverQuery = it },
+                                        onSearch = { session.searchTelegramChats(it) },
+                                        onOpen = { openChatId = it.id }
+                                    )
+                                }
+                            }
+                        } else CompactHubHome(
                             dark = dark,
-                            photoPaths = photoPaths,
-                            matches = discovered,
-                            loading = discovering,
-                            error = discoveryError,
-                            query = discoverQuery,
-                            onQueryChange = { discoverQuery = it },
-                            onSearch = { session.searchTelegramChats(it) },
-                            onOpen = { openChatId = it.id }
+                            onDiscover = { hubSearching = true },
+                            onSaved = {
+                                session.openSavedMessages { chatId ->
+                                    coreScope.launch {
+                                        session.ensureChat(chatId)
+                                        openChatId = chatId
+                                        tab = "Chats"
+                                    }
+                                }
+                            },
+                            onContacts = { tab = "Contacts" },
+                            onFolders = { showFolderManagement = true },
+                            onGroup = { showCreateCommunity = true },
+                            onSecurity = {
+                                settingsPage = "Privacy"
+                                tab = "Settings"
+                            },
+                            onProfile = { tab = "Profile" },
+                            onLogout = session::logoutThisDevice
                         )
                         else -> SettingsScreen(
                             selectedTheme, dark, onThemeChange,
