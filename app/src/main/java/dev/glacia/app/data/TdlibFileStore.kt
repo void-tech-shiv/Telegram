@@ -26,7 +26,7 @@ class TdlibFileStore(private val client: () -> Client?) {
         if (local == null || !local.canBeDownloaded) return
         val active = client() ?: return
         synchronized(lock) {
-            if (!_paths.value.containsKey(file.id) && !requested.add(file.id)) return
+            if (_paths.value.containsKey(file.id) || !requested.add(file.id)) return
         }
         val download = TdApi.DownloadFile().apply {
             fileId = file.id
