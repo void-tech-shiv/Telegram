@@ -112,7 +112,7 @@ class TdlibMessages(
         val function = TdApi.SendMessage().apply {
             this.chatId = chatId
             if (replyToId != null && replyToId > 0) {
-                replyTo = TdApi.InputMessageReplyToMessage(replyToId, null)
+                replyTo = TdApi.InputMessageReplyToMessage().apply { messageId = replyToId }
             }
             this.inputMessageContent = input
         }
