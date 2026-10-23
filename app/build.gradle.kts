@@ -65,5 +65,6 @@ dependencies {
     implementation("io.coil-kt.coil3:coil-compose:3.6.3")
     implementation("androidx.media3:media3-exoplayer:1.11.1")
     implementation("androidx.media3:media3-ui:1.11.1")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
     testImplementation("junit:junit:4.13.2")
 }
