@@ -16,7 +16,9 @@ data class CorePerson(
     val lastName: String = "",
     val username: String = "",
     val phone: String = "",
-    val photoId: Int? = null
+    val photoId: Int? = null,
+    val lastSeenAt: Int = 0,
+    val online: Boolean = false
 ) {
     val displayName: String get() =
         listOf(firstName, lastName).filter { it.isNotBlank() }.joinToString(" ")
@@ -53,14 +55,18 @@ class TdlibCoreAccount(
             lastName = user.lastName.orEmpty(),
             username = user.usernames?.activeUsernames?.firstOrNull().orEmpty(),
             phone = user.phoneNumber.orEmpty(),
-            photoId = user.profilePhoto?.small?.id
+            photoId = user.profilePhoto?.small?.id,
+            lastSeenAt = (user.status as? TdApi.UserStatusOffline)?.wasOnline ?: 0,
+            online = user.status is TdApi.UserStatusOnline
         )
     }
 
     private fun publishContacts() {
         _state.value = _state.value.copy(
             contacts = contactIds.mapNotNull(users::get)
-                .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.displayName })
+                .sortedWith(compareByDescending<CorePerson> { it.online }
+                    .thenByDescending { it.lastSeenAt }
+                    .thenBy(String.CASE_INSENSITIVE_ORDER) { it.displayName })
         )
     }
 
