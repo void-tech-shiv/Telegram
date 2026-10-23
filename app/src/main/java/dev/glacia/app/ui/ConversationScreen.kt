@@ -1,5 +1,6 @@
 package dev.glacia.app.ui
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
@@ -29,6 +30,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.TextStyle
@@ -242,7 +244,11 @@ fun ConversationScreen(
                         val isVisual = msg.mediaType == "photo" || msg.mediaType == "video"
                         val imageDocument = msg.mediaType == "document" &&
                             DocumentKind.isImage(msg.attachmentMime, msg.attachmentName)
-                        val bubbleShape = RoundedCornerShape(22.dp)
+                        val bubbleShape = RoundedCornerShape(
+                            topStart = 22.dp, topEnd = 22.dp,
+                            bottomStart = if (msg.outgoing) 22.dp else 7.dp,
+                            bottomEnd = if (msg.outgoing) 7.dp else 22.dp
+                        )
                         val bubbleWidth = if (isVisual || imageDocument) {
                             Modifier.fillMaxWidth(0.80f).widthIn(max = 278.dp)
                         } else {
@@ -251,12 +257,17 @@ fun ConversationScreen(
                         Column(
                             bubbleWidth
                                 .clip(bubbleShape)
+                                .animateContentSize()
                                 .background(
-                                    if (msg.outgoing) {
-                                        if (dark) Color(0xD83D5E90) else Color(0xDED6E1FF)
-                                    } else {
-                                        if (dark) Color(0xEA1D2B4B) else Color(0xF0FFFFFF)
-                                    }
+                                    brush = Brush.verticalGradient(
+                                        if (msg.outgoing) {
+                                            if (dark) listOf(Color(0xEC426797), Color(0xD82A466F))
+                                            else listOf(Color(0xEFE9EEFF), Color(0xD8CEDCFF))
+                                        } else {
+                                            if (dark) listOf(Color(0xE629395B), Color(0xEA19243D))
+                                            else listOf(Color(0xFAFFFFFF), Color(0xE3EAF1FE))
+                                        }
+                                    )
                                 )
                                 .border(
                                     1.dp, Color.White.copy(alpha = if (dark) 0.13f else 0.55f),
