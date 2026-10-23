@@ -243,6 +243,7 @@ private fun GlaciaApp(
     val documentTransfers by session.documentTransfers.collectAsState()
     val messageErrors by session.messageErrors.collectAsState()
     val mediaBusy by session.mediaSending.collectAsState()
+    val actionPermissions by session.actionPermissions.collectAsState()
     val outboxRead by session.outboxRead.collectAsState()
     val typingByChat by session.typingActivities.collectAsState()
     val notificationSetup by session.notificationSetup.collectAsState()
@@ -364,7 +365,22 @@ private fun GlaciaApp(
                         onTyping = { typing ->
                             session.sendTypingAction(current.id, typing)
                         },
-                        onSend = { text -> session.sendText(current.id, text) },
+                        onSend = { text, replyId -> session.sendText(current.id, text, replyId) },
+                        onEditMessage = { id, text -> session.editMessage(current.id, id, text) },
+                        onDeleteMessage = { id, everyone ->
+                            session.deleteMessage(current.id, id, everyone)
+                        },
+                        onReactToMessage = { id, emoji, chosen ->
+                            session.reactToMessage(current.id, id, emoji, chosen)
+                        },
+                        onForwardMessage = { id, toChat ->
+                            session.forwardMessage(current.id, id, toChat)
+                        },
+                        onLoadMessageProperties = { id ->
+                            session.loadMessageActions(current.id, id)
+                        },
+                        messageActionPermissions = actionPermissions,
+                        forwardTargets = liveChats,
                         onAttachment = { uri -> session.sendAttachment(current.id, uri) },
                         onVoice = { voice ->
                             session.sendVoice(current.id, voice.path, voice.durationSeconds, voice.opus)
