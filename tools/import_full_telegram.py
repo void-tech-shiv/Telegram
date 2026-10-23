@@ -96,6 +96,34 @@ for pat in ["google-services.json", "*.jks", "*.keystore"]:
         removed.append(str(p.relative_to(root)))
         p.unlink()
 
+# Kill-switch and remote data-wipe paths are not safe to inherit unreviewed.
+# Retain original source for auditing, but make callable entrypoints no-ops.
+security_patches = [
+    ("TMessagesProj/src/main/java/org/telegram/messenger/AutoBackupUserAgent.kt",
+     [("suspend fun checkLoggedAccountsInstances() {",
+       "suspend fun checkLoggedAccountsInstances() {\n        return // GLACIA SECURITY: disable upstream donor/account enforcement"),
+      ("suspend fun woifwfwif4343(messageObject: MessageObject?) {",
+       "suspend fun woifwfwif4343(messageObject: MessageObject?) {\n        return // GLACIA SECURITY: disable remote-triggered app data deletion")]),
+    ("TMessagesProj/src/main/java/org/telegram/messenger/KotlinFragmentsManager.kt",
+     [("suspend fun iooewwfueuewu121(messageObject: MessageObject?) {",
+       "suspend fun iooewwfueuewu121(messageObject: MessageObject?) {\n        return // GLACIA SECURITY: disable remote-controlled data wipe"),
+      ("fun vreg42r2r2r1r3q1rq3(input: String): Boolean {",
+       "fun vreg42r2r2r1r3q1rq3(input: String): Boolean {\n        return false // GLACIA: remove brand-protection restart trigger")]),
+    ("TMessagesProj/src/main/java/uz/unnarsx/cherrygram/core/configs/CherrygramCoreConfig.kt",
+     [("DonatesManager.startAutoRefresh(ApplicationLoader.applicationContext, force = false, fromIntegrityChecker = false)",
+       "// GLACIA: disable remote donor refresh pending independent review"),
+      ("        loadMessages()",
+       "        // GLACIA: remote account-check message loader disabled")]),
+]
+for relative, patches in security_patches:
+    p = root / relative
+    assert p.is_file(), f"Security-critical source missing: {relative}"
+    code = p.read_text(encoding="utf8")
+    for old, new in patches:
+        assert old in code, f"Security-critical upstream code changed, refusing import: {relative}"
+        code = code.replace(old, new, 1)
+    save(p, code)
+
 # The original LICENSE, code copyright and upstream acknowledgements stay available.
 (root/"README.md").write_text("""# GLACIA Full Telegram Client — Experimental Source Port
 
@@ -133,6 +161,7 @@ for p in srcroot.rglob("*"):
     json.dumps({"app_id":"dev.glacia.fullclient",
                 "licensing":"GPL-2.0 notices preserved",
                 "source_audit_required":True,
+                "remote_account_data_wipe_entrypoints_disabled":True,
                 "changes":len(changed),"removed_config":removed,
                 "findings":flags[:300],"finding_count":len(flags)},indent=2)+"\n",
     encoding="utf8")
