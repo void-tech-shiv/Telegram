@@ -247,6 +247,7 @@ class TdlibSession(private val context: Context) {
     val filePaths = fileStore.paths
     val documentTransfers = fileStore.transfers
     fun requestDocumentDownload(fileId: Int) = fileStore.requestDocument(fileId)
+    fun retryMediaDownload(fileId: Int) = fileStore.requestDocument(fileId, retry = true)
     private val messaging = TdlibMessages({ client }, fileStore)
     private val expressions = TdlibExpressions({ client }, fileStore, messaging)
     val expressionState = expressions.state
