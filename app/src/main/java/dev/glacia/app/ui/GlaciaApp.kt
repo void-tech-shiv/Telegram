@@ -229,6 +229,7 @@ private fun GlaciaApp(
     val discoveryError by session.discoveryError.collectAsState()
     val notificationTarget by session.notificationTargetChat.collectAsState()
     val chatMuteStates by session.chatMuteStates.collectAsState()
+    val expressions by session.expressionState.collectAsState()
     LaunchedEffect(notificationChatId, notificationTarget?.id, liveChats) {
         val id = notificationChatId ?: return@LaunchedEffect
         if (id == 0L) return@LaunchedEffect
@@ -580,6 +581,11 @@ private fun GlaciaApp(
                         onAttachment = { uri -> session.sendAttachment(current.id, uri) },
                         onVoice = { voice ->
                             session.sendVoice(current.id, voice.path, voice.durationSeconds, voice.opus)
+                        },
+                        expressions = expressions,
+                        onRefreshExpressions = session::loadExpressions,
+                        onSendExpression = { item, replyId ->
+                            session.sendExpression(current.id, item, replyId)
                         },
                         mediaBusy = mediaBusy,
                         onLoadMore = {
