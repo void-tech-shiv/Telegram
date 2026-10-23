@@ -2,7 +2,7 @@
 
 Independent Android Telegram client developed in **Kotlin + Jetpack Compose + TDLib**. Midnight Glass and Frosted Daylight themes, TDLib Telegram session, real chats/messaging, images/documents, Media3 video/voice playback, Discover search, unread filters, read receipts and typing indicators.
 
-## Experimental developer build: v0.3.12 (Phase 3.9 — native voice/video work)
+## Experimental developer build: v0.3.13 (Phase 3.9 — native voice/video work)
 
 **Branch:** `feature/phase-3-9-native-media-bootstrap` · **Status:** unverified experimental calling; keep draft. **Normal builds keep calling disabled and use external official Telegram handoff.**
 
@@ -13,6 +13,7 @@ Independent Android Telegram client developed in **Kotlin + Jetpack Compose + TD
 - Only debug builds can enable native calls; release builds always disable them. Microphone/camera permission and two-account phone testing are still required.
 - **Build passing ≠ two-way calls verified**; no production claims until remote audio/video is demonstrated on two actual accounts and security/device QA passes.
 - See `docs/PHASE3_9_NATIVE.md` for testing requirements and safe build commands. If you still see the official Telegram handoff dialog, the running APK has native calling OFF.
+- **Instant hang-up on answering:** v0.3.13 buffers early TDLib signaling, stops discarding on transient ICE `DISCONNECTED`, and adds redacted `GLACIA-VoIP` diagnostic stages. Real calls still require device QA.
 
 ## Previous developer build: v0.3.10 (Phase 3.9 — incoming-call foundation)
 
