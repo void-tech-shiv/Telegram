@@ -18,6 +18,8 @@ internal fun CoreChatInfoDialog(
     onDismiss: () -> Unit,
     onRename: (String) -> Unit,
     onDescription: (String) -> Unit,
+    contacts: List<dev.glacia.app.data.CorePerson>,
+    onAddMember: (Long) -> Unit,
     onInvite: () -> Unit,
     onUnread: () -> Unit,
     onJumpPinned: (Long) -> Unit,
@@ -27,6 +29,24 @@ internal fun CoreChatInfoDialog(
     var name by remember(chat?.id) { mutableStateOf(chat?.title.orEmpty()) }
     var about by remember(chat?.id) { mutableStateOf("") }
     var confirmInvite by remember { mutableStateOf(false) }
+    var addingMember by remember { mutableStateOf<dev.glacia.app.data.CorePerson?>(null) }
+    addingMember?.let { person ->
+        AlertDialog(
+            onDismissRequest = { addingMember = null },
+            title = { Text("Add group member?") },
+            text = { Text("Invite ${person.displayName} to this Telegram community? " +
+                "They may see group messages depending on Telegram privacy rules.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    onAddMember(person.id)
+                    addingMember = null
+                }) { Text("Add") }
+            },
+            dismissButton = { TextButton(onClick = { addingMember = null }) {
+                Text("Cancel")
+            } }
+        )
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Telegram chat information") },
@@ -56,6 +76,17 @@ internal fun CoreChatInfoDialog(
                         style = MaterialTheme.typography.titleSmall)
                     Text("Telegram checks your admin rights before saving.",
                         style = MaterialTheme.typography.bodySmall)
+                    Text("Known administrators: ${chat.administratorCount}",
+                        style = MaterialTheme.typography.bodySmall)
+                    if (contacts.isNotEmpty()) {
+                        Text("Add Telegram contact to this group",
+                            style = MaterialTheme.typography.labelMedium)
+                        contacts.take(20).forEach { person ->
+                            TextButton(onClick = { addingMember = person }) {
+                                Text("+ ${person.displayName}")
+                            }
+                        }
+                    }
                     OutlinedTextField(name, { name = it.take(128) },
                         label = { Text("Group/channel title") },
                         singleLine = true, modifier = Modifier.fillMaxWidth())
