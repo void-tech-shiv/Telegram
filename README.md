@@ -2,7 +2,19 @@
 
 Independent Android Telegram client developed in **Kotlin + Jetpack Compose + TDLib**. Midnight Glass and Frosted Daylight themes, TDLib Telegram session, real chats/messaging, images/documents, Media3 video/voice playback, Discover search, unread filters, read receipts and typing indicators.
 
-## Experimental developer build: v0.3.18 (Phase 3.13 — Telegram feature expansion)
+## Experimental bugfix: v0.3.19 (Telegram reaction 400)
+
+**Branch:** `fix/reaction-eligibility-telegram-400` · **Status:** draft PR #24; Android-device QA required.
+
+- Fixed an invalid emoji action menu on video/voice call history events:
+  Telegram code 400 was caused by trying to react to a service event.
+- Standard message emoji choices are now loaded from Telegram's
+  `GetMessageAvailableReactions` rather than being guessed from a fixed grid.
+- Existing calling, message delivery, chat archive/pin and search code
+  remain untouched. See `docs/REACTION_400_FIX.md` for Windows PowerShell
+  commands, expected behavior and regression tests.
+
+## Previous experimental developer build: v0.3.18 (Phase 3.13 — Telegram feature expansion)
 
 **Branch:** `feature/phase-3-13-chat-management-search` · **Status:** draft, two-account device QA required.
 
