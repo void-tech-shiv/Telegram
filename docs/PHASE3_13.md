@@ -11,7 +11,7 @@
   TDLib chat list positions, not a fake local-only hide. Load archived chats
   from Telegram at authorization and on entering the archive tab.
 - **Archive / Unarchive** in each conversation's menu. TDLib
-  `SetChatChatList`; don't optimistically claim success. Waiting state is
+  `AddChatToList`; don't optimistically claim success. Waiting state is
   per-chat; errors show Telegram numeric code without exposing user data.
 - **Pin / Unpin chats** via TDLib `ToggleChatIsPinned`, respecting Telegram
   authorization/limits and server updates, ordered before regular chats.
