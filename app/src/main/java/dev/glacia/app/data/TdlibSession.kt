@@ -746,6 +746,15 @@ class TdlibSession(private val context: Context) {
     }
 
     fun submitPassword(password: String) = request(TdApi.CheckAuthenticationPassword(password), "Two-step password")
+    /** Explicit user-confirmed account logout. Does not log out other devices. */
+    fun logoutThisDevice() {
+        if (_auth.value !is Auth.Ready) return
+        client?.send(TdApi.LogOut()) { response ->
+            if (response is TdApi.Error) {
+                _notice.value = "Telegram logout failed (code ${response.code})."
+            }
+        }
+    }
 
     fun close() {
         typing.clear()
