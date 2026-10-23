@@ -202,9 +202,7 @@ internal class NativeCallMedia(
         if (cameras.size < 2) return false
         val from = cameras.indexOfFirst { it.metadata == cameraDeviceMetadata }
         val next = cameras[(from + 1).coerceAtLeast(0) % cameras.size]
-        val mic = AudioDescription(
-            MediaSource.DEVICE, 48000, 2, "{\\"is_microphone\\":true}", true
-        )
+        val mic = AudioDescription(MediaSource.DEVICE, 48000, 2, "{\"is_microphone\":true}", true)
         val camera = VideoDescription(MediaSource.DEVICE, 640, 480, 24, next.metadata, true)
         native?.setStreamSources(
             id, StreamMode.CAPTURE, MediaDescription(mic, null, camera, null)
