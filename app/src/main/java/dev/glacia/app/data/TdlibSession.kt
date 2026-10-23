@@ -184,6 +184,16 @@ class TdlibSession(private val context: Context) {
     }
     fun openCallContact(chatId: Long) = calls.openContact(chatId)
     fun openOfficialTelegram(): Boolean = calls.openOfficialApp()
+    private val nativeCalls = NativeCallController(context) { client }
+    val nativeCallingEnabled = nativeCalls.enabled
+    val nativeCall = nativeCalls.call
+    val nativeCallNotice = nativeCalls.notice
+    val remoteCallFrames = nativeCalls.remoteFrames
+    fun startNativeCall(chatId: Long, video: Boolean) = nativeCalls.dial(chatId, video)
+    fun answerNativeCall() = nativeCalls.accept()
+    fun hangupNativeCall() = nativeCalls.hangUp()
+    fun muteNativeCall(muted: Boolean) = nativeCalls.setMuted(muted)
+    fun speakerNativeCall(on: Boolean) = nativeCalls.setSpeaker(on)
 
     // TDLib call invitations are observable; no native media engine is present.
     private val callInbox = TdlibCallInbox { client }
@@ -411,6 +421,7 @@ class TdlibSession(private val context: Context) {
         fileStore.onUpdate(obj)
         messaging.onUpdate(obj)
         callInbox.onUpdate(obj)
+        nativeCalls.onUpdate(obj)
         typing.onUpdate(obj)
         notifications.onUpdate(obj)
         when (obj) {
@@ -513,6 +524,7 @@ class TdlibSession(private val context: Context) {
                 messaging.clear()
                 messageActions.clear()
                 callInbox.clear()
+                nativeCalls.clear()
                 discovery.clear()
                 typing.clear()
                 fileStore.clear()
@@ -614,6 +626,7 @@ class TdlibSession(private val context: Context) {
     fun close() {
         typing.clear()
         callInbox.clear()
+        nativeCalls.clear()
         client?.send(TdApi.Close()) { }
         client = null
     }
