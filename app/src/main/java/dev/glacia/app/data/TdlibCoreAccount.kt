@@ -206,6 +206,81 @@ class TdlibCoreAccount(
         }
     }
 
+    /** Phase 4.1: only an explicit account action updates the public username. */
+    fun changeUsername(raw: String) {
+        val username = raw.trim().removePrefix("@")
+        if (username.length > 32 ||
+            (username.isNotEmpty() && !username.matches(Regex("[A-Za-z0-9_]+")))) {
+            synchronized(lock) {
+                _state.value = _state.value.copy(notice = "Username may contain only letters, numbers and underscores.")
+            }
+            return
+        }
+        val active = client() ?: return
+        synchronized(lock) {
+            if (_state.value.busy) return
+            _state.value = _state.value.copy(busy = true, notice = null)
+        }
+        active.send(TdApi.SetUsername(username)) { reply ->
+            synchronized(lock) {
+                _state.value = _state.value.copy(
+                    busy = false,
+                    notice = if (reply is TdApi.Error)
+                        "Telegram rejected username (code ${reply.code})."
+                    else "Username saved to Telegram."
+                )
+            }
+            if (reply !is TdApi.Error) refresh()
+        }
+    }
+
+    /** The UI copies an explicitly selected JPEG/PNG to private cache. */
+    fun uploadProfilePhoto(localPath: String) {
+        val file = java.io.File(localPath)
+        if (!file.isFile || file.length() !in 1..5_000_000) {
+            synchronized(lock) { _state.value = _state.value.copy(
+                notice = "Choose a photo smaller than 5 MB."
+            ) }
+            return
+        }
+        val active = client() ?: return
+        synchronized(lock) {
+            if (_state.value.busy) return
+            _state.value = _state.value.copy(busy = true, notice = null)
+        }
+        active.send(
+            TdApi.SetProfilePhoto(
+                TdApi.InputChatPhotoStatic(TdApi.InputFileLocal(file.absolutePath)), false
+            )
+        ) { reply ->
+            synchronized(lock) {
+                _state.value = _state.value.copy(
+                    busy = false,
+                    notice = if (reply is TdApi.Error)
+                        "Telegram rejected photo (code ${reply.code})."
+                    else "Telegram profile photo updated."
+                )
+            }
+            file.delete()
+            if (reply !is TdApi.Error) refresh()
+        }
+    }
+
+    /** Phase 4.1: remove only the selected Telegram-cloud contact. */
+    fun removeContact(personId: Long) {
+        val active = client() ?: return
+        if (personId !in synchronized(lock) { contactIds }) return
+        active.send(TdApi.RemoveContacts(longArrayOf(personId))) { reply ->
+            synchronized(lock) {
+                _state.value = _state.value.copy(
+                    notice = if (reply is TdApi.Error) "Cannot remove contact (code ${reply.code})."
+                    else "Telegram contact removed."
+                )
+            }
+            if (reply !is TdApi.Error) refresh()
+        }
+    }
+
     /** Telegram Saved Messages is the authenticated user's own private chat. */
     fun openSavedMessages(onChat: (Long) -> Unit) {
         val id = synchronized(lock) { selfId } ?: return
