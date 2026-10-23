@@ -10,7 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import io.github.pytgcalls.media.Frame
+import io.github.pytgcalls.models.Frame
 import kotlinx.coroutines.flow.SharedFlow
 import org.webrtc.EglBase
 import org.webrtc.JavaI420Buffer
