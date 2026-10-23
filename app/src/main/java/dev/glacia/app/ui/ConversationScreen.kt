@@ -60,7 +60,7 @@ fun ConversationScreen(
         val newest = messages.lastOrNull()?.id ?: return@LaunchedEffect
         if (newestSeen != newest) {
             newestSeen = newest
-            timelineState.scrollToItem(messages.lastIndex)
+            timelineState.scrollToItem(messages.size)
         }
     }
     fun send() {
@@ -100,15 +100,16 @@ fun ConversationScreen(
                         horizontalArrangement =
                             if (msg.outgoing) Arrangement.End else Arrangement.Start
                     ) {
+                        // A single shared bubble shape prevents sharp rectangular seams
+                        // where clipped media cards meet the rounded message border.
+                        val bubbleShape = RoundedCornerShape(
+                            topStart = 21.dp, topEnd = 21.dp,
+                            bottomStart = if (msg.outgoing) 21.dp else 6.dp,
+                            bottomEnd = if (msg.outgoing) 6.dp else 21.dp
+                        )
                         Column(
-                            Modifier.widthIn(max = 304.dp)
-                                .clip(
-                                    RoundedCornerShape(
-                                        topStart = 21.dp, topEnd = 21.dp,
-                                        bottomStart = if (msg.outgoing) 21.dp else 5.dp,
-                                        bottomEnd = if (msg.outgoing) 5.dp else 21.dp
-                                    )
-                                )
+                            Modifier.widthIn(max = if (msg.mediaType != null) 278.dp else 304.dp)
+                                .clip(bubbleShape)
                                 .background(
                                     if (msg.outgoing) {
                                         if (dark) Color(0xD83D5E90) else Color(0xDED6E1FF)
@@ -118,9 +119,9 @@ fun ConversationScreen(
                                 )
                                 .border(
                                     1.dp, Color.White.copy(alpha = if (dark) 0.13f else 0.55f),
-                                    RoundedCornerShape(21.dp)
+                                    bubbleShape
                                 )
-                                .padding(horizontal = 15.dp, vertical = 11.dp)
+                                .padding(horizontal = 12.dp, vertical = 11.dp)
                         ) {
                             val thumbnailPath = msg.mediaFileId?.let(filePaths::get)
                             if (thumbnailPath != null) {
@@ -128,11 +129,9 @@ fun ConversationScreen(
                                     model = File(thumbnailPath),
                                     contentDescription = msg.mediaType?.let { "$it thumbnail" },
                                     contentScale = ContentScale.Crop,
-                                    modifier = Modifier.widthIn(max = 270.dp)
-                                        .fillMaxWidth()
-                                        .heightIn(max = 220.dp)
-                                        .height(190.dp)
-                                        .clip(RoundedCornerShape(14.dp))
+                                    modifier = Modifier.fillMaxWidth()
+                                        .height(if (msg.mediaType == "video") 148.dp else 170.dp)
+                                        .clip(RoundedCornerShape(15.dp))
                                 )
                                 Spacer(Modifier.height(8.dp))
                             } else if (msg.mediaType != null) {
