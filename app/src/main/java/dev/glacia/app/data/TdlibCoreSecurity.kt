@@ -11,6 +11,7 @@ data class CoreSecurityState(
     val devices: List<CoreDevice> = emptyList(),
     val blocked: List<CoreBlockedUser> = emptyList(),
     val loading: Boolean = false,
+    val privacy: Map<String, String> = emptyMap(),
     val notice: String? = null
 )
 
@@ -53,6 +54,7 @@ class TdlibCoreSecurity(private val client: () -> Client?) {
                 )
             }
         }
+        refreshPrivacy()
         active.send(TdApi.GetBlockedMessageSenders(TdApi.BlockListMain(), 0, 100)) { result ->
             if (result is TdApi.MessageSenders) {
                 val ids = result.senders.orEmpty().mapNotNull {
@@ -82,6 +84,92 @@ class TdlibCoreSecurity(private val client: () -> Client?) {
                 if (generation == epoch) _state.value = _state.value.copy(
                     notice = "Blocked users unavailable (Telegram code ${result.code})."
                 )
+            }
+        }
+    }
+
+    private fun privacyKind(key: String): TdApi.UserPrivacySetting? = when (key) {
+        "Last seen" -> TdApi.UserPrivacySettingShowStatus()
+        "Phone number" -> TdApi.UserPrivacySettingShowPhoneNumber()
+        "Voice/video calls" -> TdApi.UserPrivacySettingAllowCalls()
+        else -> null
+    }
+
+    private fun defaultRuleLabel(rules: Array<TdApi.UserPrivacySettingRule>): String {
+        val base = rules.firstOrNull {
+            it is TdApi.UserPrivacySettingRuleAllowAll ||
+                it is TdApi.UserPrivacySettingRuleAllowContacts ||
+                it is TdApi.UserPrivacySettingRuleRestrictAll
+        }
+        val label = when (base) {
+            is TdApi.UserPrivacySettingRuleAllowAll -> "Everyone"
+            is TdApi.UserPrivacySettingRuleAllowContacts -> "My contacts"
+            is TdApi.UserPrivacySettingRuleRestrictAll -> "Nobody"
+            else -> "Custom"
+        }
+        return label + if (rules.any { rule ->
+            rule !is TdApi.UserPrivacySettingRuleAllowAll &&
+                rule !is TdApi.UserPrivacySettingRuleAllowContacts &&
+                rule !is TdApi.UserPrivacySettingRuleRestrictAll
+        }) " (+exceptions)" else ""
+    }
+
+    /** Read three common Telegram privacy defaults, never assume local values. */
+    fun refreshPrivacy() {
+        val active = client() ?: return
+        val generation = synchronized(lock) { epoch }
+        listOf("Last seen", "Phone number", "Voice/video calls").forEach { key ->
+            val setting = privacyKind(key) ?: return@forEach
+            active.send(TdApi.GetUserPrivacySettingRules(setting)) { response ->
+                synchronized(lock) {
+                    if (generation != epoch) return@synchronized
+                    if (response is TdApi.UserPrivacySettingRules) {
+                        _state.value = _state.value.copy(
+                            privacy = _state.value.privacy +
+                                (key to defaultRuleLabel(response.rules.orEmpty()))
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Re-fetch fresh privacy rules just before a write; retain per-user/chat
+     * exceptions. No change happens without explicit user confirmation.
+     */
+    fun changePrivacy(key: String, audience: String) {
+        val setting = privacyKind(key) ?: return
+        val base: TdApi.UserPrivacySettingRule = when (audience) {
+            "Everyone" -> TdApi.UserPrivacySettingRuleAllowAll()
+            "My contacts" -> TdApi.UserPrivacySettingRuleAllowContacts()
+            "Nobody" -> TdApi.UserPrivacySettingRuleRestrictAll()
+            else -> return
+        }
+        val active = client() ?: return
+        active.send(TdApi.GetUserPrivacySettingRules(setting)) { response ->
+            if (response !is TdApi.UserPrivacySettingRules) {
+                synchronized(lock) { _state.value = _state.value.copy(
+                    notice = "Could not fetch fresh Telegram privacy rules."
+                ) }
+                return@send
+            }
+            // Preserve all explicit allow/restrict user and chat exceptions.
+            val exceptions = response.rules.orEmpty().filterNot {
+                it is TdApi.UserPrivacySettingRuleAllowAll ||
+                    it is TdApi.UserPrivacySettingRuleAllowContacts ||
+                    it is TdApi.UserPrivacySettingRuleRestrictAll
+            }
+            val next = TdApi.UserPrivacySettingRules((exceptions + base).toTypedArray())
+            active.send(TdApi.SetUserPrivacySettingRules(setting, next)) { result ->
+                synchronized(lock) {
+                    _state.value = _state.value.copy(
+                        notice = if (result is TdApi.Error)
+                            "Privacy change denied (Telegram code ${result.code})."
+                        else "Privacy preferences saved by Telegram."
+                    )
+                }
+                if (result !is TdApi.Error) refreshPrivacy()
             }
         }
     }
