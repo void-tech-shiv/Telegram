@@ -52,14 +52,15 @@ internal class CallNetworkTracker(
     }
 
     private fun publish(epoch: Long, update: (CallNetworkState) -> CallNetworkState) {
-        val next: CallNetworkState
         synchronized(lock) {
             if (!active || generation != epoch) return
-            next = update(state)
+            val next = update(state)
             if (next == state) return
             state = next
+            // Deliver before a concurrent stop/new call can begin; otherwise a
+            // delayed callback could overwrite the new call's network hint.
+            onChanged(next)
         }
-        onChanged(next)
     }
 
     fun start() {
