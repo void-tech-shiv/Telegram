@@ -248,6 +248,11 @@ class TdlibSession(private val context: Context) {
     val documentTransfers = fileStore.transfers
     fun requestDocumentDownload(fileId: Int) = fileStore.requestDocument(fileId)
     private val messaging = TdlibMessages({ client }, fileStore)
+    private val messageSearch = TdlibMessageSearch { client }
+    val chatSearchResults = messageSearch.results
+    fun searchChatMessages(chatId: Long, query: String, more: Boolean = false) =
+        messageSearch.search(chatId, query, more)
+    fun clearChatSearch(chatId: Long) = messageSearch.clear(chatId)
     private val messageActions = TdlibMessageActions({ client }, messaging)
     private val calls = TelegramCallHandoff(context, { client }) { id, explanation ->
         messaging.reportError(id, explanation)
@@ -604,6 +609,7 @@ class TdlibSession(private val context: Context) {
             }
             is TdApi.AuthorizationStateClosed -> {
                 messaging.clear()
+                messageSearch.clearAll()
                 messageActions.clear()
                 callInbox.clear()
                 nativeCalls.clear()
@@ -723,6 +729,7 @@ class TdlibSession(private val context: Context) {
 
     fun close() {
         typing.clear()
+        messageSearch.clearAll()
         callInbox.clear()
         nativeCalls.clear()
         incomingCallAlerts.clear()
