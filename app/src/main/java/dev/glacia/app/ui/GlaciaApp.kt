@@ -642,6 +642,15 @@ private fun GlaciaApp(
                             dark = dark,
                             onRefresh = session::refreshCoreAccount,
                             onDismissNotice = session::clearAccountNotice,
+                            onOpenSavedMessages = {
+                                session.openSavedMessages { chatId ->
+                                    coreScope.launch {
+                                        session.ensureChat(chatId)
+                                        openChatId = chatId
+                                        tab = "Chats"
+                                    }
+                                }
+                            },
                             onOpenContact = { userId ->
                                 session.openContactChat(userId) { chatId ->
                                     coreScope.launch {
