@@ -829,15 +829,15 @@ private fun SettingsScreen(
             color = mutedInk(dark), fontSize = 12.sp
         )
         Spacer(Modifier.height(24.dp))
-        Text("GLACIA  •  v0.3.8", color = accent(dark),
+        Text("GLACIA  •  v0.3.9", color = accent(dark),
             fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp, fontSize = 11.sp)
         Spacer(Modifier.height(8.dp))
         Text("Experimental Telegram client", color = ink(dark),
             fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
         Spacer(Modifier.height(8.dp))
         Text(
-            "Available: Telegram messaging, photo/video/file upload, voice-note recording " +
-                "(Android 10+), media playback, chat filters, smart notifications and typing.",
+            "Available: text and media messaging, OGG voice notes, message reply/edit/delete/" +
+                "forward/reactions, read receipts, search, notifications and typing indicators.",
             color = mutedInk(dark), fontSize = 13.sp, lineHeight = 20.sp
         )
         Spacer(Modifier.height(14.dp))
@@ -845,9 +845,9 @@ private fun SettingsScreen(
             fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp, fontSize = 11.sp)
         Spacer(Modifier.height(7.dp))
         Text(
-            "Background push delivery after process termination is not guaranteed. " +
-                "Message reactions, advanced search, upload cleanup and voice compatibility " +
-                "need more device testing.",
+            "Full in-app voice/video calling is not yet available (call button opens contact " +
+                "in official Telegram). Background push after force-stop, advanced search, " +
+                "and media upload cleanup still need work.",
             color = mutedInk(dark), fontSize = 13.sp, lineHeight = 20.sp
         )
     }
