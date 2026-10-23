@@ -9,6 +9,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import org.drinkless.tdlib.Client
 import org.drinkless.tdlib.TdApi
 import java.util.Locale
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * Single-client TDLib session. Authorization updates, not button clicks, govern transitions.
@@ -79,6 +81,86 @@ class TdlibSession(private val context: Context) {
     private val _notificationEvents = MutableStateFlow(0)
     val notificationEvents = _notificationEvents.asStateFlow()
     val notificationHealth = notifications.health
+    private val _chatMuteStates = MutableStateFlow<Map<Long, Boolean>>(emptyMap())
+    val chatMuteStates = _chatMuteStates.asStateFlow()
+    private val _muteFeedback = MutableStateFlow<String?>(null)
+    val muteFeedback = _muteFeedback.asStateFlow()
+
+    init {
+        notifications.setTitleResolver { id ->
+            synchronized(known) { known[id]?.title }
+        }
+        notifications.setMuteResolver { id ->
+            synchronized(known) {
+                known[id]?.notificationSettings?.let { settings ->
+                    !settings.useDefaultMuteFor && settings.muteFor > 0
+                } ?: false
+            }
+        }
+    }
+
+    private val _notificationTargetChat = MutableStateFlow<Chat?>(null)
+    val notificationTargetChat = _notificationTargetChat.asStateFlow()
+
+    fun ensureChat(chatId: Long) {
+        if (chatId == 0L) return
+        val cached = synchronized(known) { known[chatId] }
+        if (cached != null) {
+            publishNotificationChat(cached)
+            return
+        }
+        client?.send(TdApi.GetChat(chatId)) { response ->
+            if (response is TdApi.Chat) synchronized(known) {
+                known[chatId] = response
+                trackMute(response)
+                publishNotificationChat(response)
+                emitChats()
+            }
+        }
+    }
+
+    private fun publishNotificationChat(chat: TdApi.Chat) {
+        fileStore.ensure(chat.photo?.small)
+        _notificationTargetChat.value = Chat(
+            id = chat.id,
+            title = chat.title.ifBlank { "Telegram chat" },
+            username = "",
+            preview = "",
+            time = "",
+            unread = chat.unreadCount,
+            isGroup = chat.type is TdApi.ChatTypeBasicGroup ||
+                chat.type is TdApi.ChatTypeSupergroup,
+            photoFileId = chat.photo?.small?.id
+        )
+    }
+
+    private fun trackMute(chat: TdApi.Chat) {
+        val settings = chat.notificationSettings
+        _chatMuteStates.value = _chatMuteStates.value +
+            (chat.id to (!settings.useDefaultMuteFor && settings.muteFor > 0))
+    }
+
+    /** Telegram-synced per-chat mute (not just Android-side filtering). */
+    fun setChatMuted(chatId: Long, muted: Boolean) {
+        val chat = synchronized(known) { known[chatId] } ?: return
+        val settings = chat.notificationSettings ?: return
+        settings.useDefaultMuteFor = false
+        settings.muteFor = if (muted) Int.MAX_VALUE else 0
+        client?.send(TdApi.SetChatNotificationSettings(chatId, settings)) { reply ->
+            if (reply is TdApi.Error) {
+                _muteFeedback.value = "Telegram could not update notification settings (code ${reply.code})"
+                client?.send(TdApi.GetChat(chatId)) { refreshed ->
+                    if (refreshed is TdApi.Chat) synchronized(known) {
+                        known[chatId] = refreshed
+                        trackMute(refreshed)
+                        emitChats()
+                    }
+                }
+            } else {
+                _muteFeedback.value = null
+            }
+        }
+    }
 
     fun sendTestNotification(): Boolean = notifications.sendTestNotification()
     fun notificationsAllowed(): Boolean = notifications.areNotificationsAllowed()
@@ -233,6 +315,50 @@ class TdlibSession(private val context: Context) {
      * Without this SetOption request, UpdateNotificationGroup is never emitted.
      * Configure on every authorized launch to support existing installations.
      */
+    private val _pushStatus = MutableStateFlow(
+        if (BuildConfig.FCM_CONFIGURED) "Push token not registered yet"
+        else "Background push inactive: add app/google-services.json"
+    )
+    val pushStatus = _pushStatus.asStateFlow()
+    fun rememberPushToken(token: String) {
+        if (!BuildConfig.FCM_CONFIGURED || token.isBlank()) return
+        context.getSharedPreferences("glacia_push", Context.MODE_PRIVATE).edit()
+            .putString("token", token).apply()
+        if (_auth.value is Auth.Ready) registerPushToken(token)
+    }
+
+    private fun registerPushToken(token: String) {
+        val active = client ?: return
+        // Additional encrypted Telegram push is processed by TDLib, not exposed
+        // in Android raw notifications.
+        active.send(
+            TdApi.RegisterDevice(
+                TdApi.DeviceTokenFirebaseCloudMessaging(token, true),
+                longArrayOf()
+            )
+        ) { reply ->
+            _pushStatus.value = when (reply) {
+                is TdApi.PushReceiverId -> "TDLib push device registration accepted"
+                is TdApi.Error -> "TDLib push registration rejected (code ${reply.code})"
+                else -> "TDLib push registration returned an unexpected response"
+            }
+        }
+    }
+
+    /** Bounded cold-start TDLib push handling on Firebase's worker thread. */
+    fun processPushPayload(payload: String): Boolean {
+        if (!BuildConfig.FCM_CONFIGURED || payload.isBlank()) return false
+        val active = client ?: return false
+        val finished = CountDownLatch(1)
+        active.send(TdApi.ProcessPushNotification(payload)) { reply ->
+            if (reply is TdApi.Error && reply.code == 406) {
+                _pushStatus.value = "Push received; Telegram sync is required"
+            }
+            finished.countDown()
+        }
+        return finished.await(8L, TimeUnit.SECONDS)
+    }
+
     private fun enableTdlibNotificationApi() {
         val active = client ?: return
         _notificationSetup.value = "Enabling Telegram notification events…"
@@ -261,8 +387,16 @@ class TdlibSession(private val context: Context) {
             is TdApi.UpdateNewChat -> {
                 synchronized(known) {
                     known[obj.chat.id] = obj.chat
+                    trackMute(obj.chat)
                     _outboxRead.value = _outboxRead.value +
                         (obj.chat.id to obj.chat.lastReadOutboxMessageId)
+                    emitChats()
+                }
+            }
+            is TdApi.UpdateChatNotificationSettings -> synchronized(known) {
+                known[obj.chatId]?.let { chat ->
+                    chat.notificationSettings = obj.notificationSettings
+                    trackMute(chat)
                     emitChats()
                 }
             }
@@ -337,6 +471,11 @@ class TdlibSession(private val context: Context) {
                 _canResendCode.value = false
                 publishAuth(Auth.Ready)
                 enableTdlibNotificationApi()
+                if (BuildConfig.FCM_CONFIGURED) {
+                    context.getSharedPreferences("glacia_push", Context.MODE_PRIVATE)
+                        .getString("token", null)?.takeIf { it.isNotBlank() }
+                        ?.let(::registerPushToken)
+                }
                 request(TdApi.LoadChats(TdApi.ChatListMain(), 100), "Chat sync")
             }
             is TdApi.AuthorizationStateClosed -> {
@@ -350,6 +489,8 @@ class TdlibSession(private val context: Context) {
                 _notificationEvents.value = 0
                 synchronized(known) {
                     known.clear()
+                    _notificationTargetChat.value = null
+                    _chatMuteStates.value = emptyMap()
                     missingTitleRefreshes.clear()
                     _chats.value = emptyList()
                 }

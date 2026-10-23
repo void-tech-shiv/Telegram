@@ -1,57 +1,39 @@
 # GLACIA — Liquid Glass Telegram Client
 
-Independent Android Telegram client built from scratch with **Kotlin, Jetpack Compose and TDLib**. Supports Midnight Glass, Frosted Daylight and the system theme.
+Independent Android Telegram client developed in **Kotlin + Jetpack Compose + TDLib**. Midnight Glass and Frosted Daylight themes, TDLib Telegram session, real chats/messaging, images/documents, Media3 video/voice playback, Discover search, unread filters, read receipts and typing indicators.
 
-## Current developer build: v0.3.4 — Phase 3.3
+## Current developer build: v0.3.7 (Phase 3.6)
 
-**Branch:** `feature/phase-3-3-cherry-inspired` · **Status:** experimental / draft PR
+**Branch:** `feature/phase-3-6-smart-notifications` · **Status:** experimental draft, not merged or production certified.
 
-What is implemented in this branch:
-- Telegram authorization, chat list, real messages and text sending
-- Chat history pagination, media thumbnails and private TDLib downloads
-- Local photo viewer, Save As via Android system picker, original video/audio/voice playback (Media3)
-- Chat productivity tabs: **All / Unread / Groups / Private**
-- **Real Telegram Discover** using TDLib local chat lookup and public user/group/channel search; debounced input, clickable results
-- Kotlin Compose responsive Liquid Glass panels in dark/light
+### Smart notifications in v0.3.7
+- Tap an alert → corresponding chat, including after Activity cold start
+- GLACIA ice-star status / adaptive launcher icon
+- Distinct Android notification child per Telegram conversation plus group summary
+- Chat-header bell button → Telegram-backed per-chat mute/unmute
+- Gradient Liquid Glass message bubbles, animated bubble resizing / tab selection
+- **Optional Firebase Cloud Messaging + TDLib push integration scaffold** (see `docs/PHASE3_6.md`); *not* reliable after process death until Firebase project/sender setup and real-device cold-start testing pass. Force-stop cannot be bypassed.
 
-Not yet included: full text-content search across all Telegram messages, push notifications, sending image/video attachments, voice recording, read receipts, typing indicators, reactions, calls and full parity with Telegram. Public search may be restricted by Telegram server/account permissions.
-
-## Quick local build (Windows)
-
-Prerequisites: Android Studio, Java 17, Android SDK with API 37, Android device/emulator.
+### Build locally
 
 ```powershell
-git clone https://github.com/void-tech-shiv/Telegram.git
-cd Telegram
-git switch --track origin/feature/phase-3-3-cherry-inspired
-```
-
-In the project's **untracked** `local.properties` keep your Android SDK path and set **your own** Telegram API credentials from [my.telegram.org/apps](https://my.telegram.org/apps):
-
-```properties
-telegram.apiId=YOUR_NUMERIC_API_ID
-telegram.apiHash=YOUR_PRIVATE_API_HASH
-```
-
-Then build/test:
-
-```powershell
+cd D:\telegram\Telegram
+git fetch origin
+git switch --track origin/feature/phase-3-6-smart-notifications
 .\gradlew.bat :app:assembleDebug :app:testDebugUnitTest
 ```
 
-Use Android Studio's **Run** button to install over your prior GLACIA build. Don't uninstall/clear app data if you need to preserve the existing Telegram session. Never commit `local.properties`, API hash, a configured APK, TDLib database files, or personal message logs. Public CI APKs intentionally have no usable Telegram API credentials.
+If you already have the branch, switch to it and pull `--ff-only`. Keep `telegram.apiId` and `telegram.apiHash` in root `local.properties`; don't commit credentials. Run the locally built APK over the existing GLACIA installation to retain your TDLib login data. Public CI APK cannot sign in because it contains placeholder credentials.
 
-## Project components
+Firebase is off by default. A Firebase/Telegram-compatible FCM project for `dev.glacia.app` can be configured with a local ignored `app/google-services.json`. A successful Firebase registration alone **does not prove** background message delivery.
 
-- `app/src/main/java/dev/glacia/app/data/TdlibSession.kt` — authorization, chat state and TDLib lifecycle
-- `.../data/TdlibMessages.kt` — history, text sends, updates and media metadata
-- `.../data/TdlibDiscovery.kt` — Telegram local/public search and stale-response protection
-- `.../data/ChatFilters.kt` — chat filtering rules
-- `.../ui/GlaciaApp.kt` — navigation and themes
-- `.../ui/TelegramDiscoverScreen.kt` — real Discover UI
-- `.../ui/GlaciaPlaybackDialog.kt` — local-only Media3 playback
-- `docs/PHASE3_3.md` — licensing notes and Android QA guide
+### Remaining work
 
+Reliable background push after process death, full attachment sending and voice recording, actual global *message-content* search, reactions/calls and production security audit are still outstanding.
+
+See `docs/PHASE3_6.md` for full device QA and privacy notes; Cherrygram is credited below as UI/product inspiration only, without copying GPL-licensed source code.
+
+---
 ## Open-source inspiration
 
 Thanks to [Cherrygram](https://github.com/arsLan4k1390/Cherrygram) for inspiration around customizable chat workflows and modular feature organization. Cherrygram is based on the Telegram Android app and is distributed under **GPLv2-or-later**. **No Cherrygram source files or assets have been copied or merged** into GLACIA; adaptations are written independently on TDLib + Compose. Directly incorporating Cherrygram source would require a separate licensing/attribution review.
