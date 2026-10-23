@@ -65,6 +65,55 @@ class TdlibSession(private val context: Context) {
     }
     private val _chats = MutableStateFlow<List<Chat>>(emptyList())
     val chats = _chats.asStateFlow()
+    data class ChatFolderTab(val id: Int, val title: String)
+    private val _folderTabs = MutableStateFlow<List<ChatFolderTab>>(emptyList())
+    val folderTabs = _folderTabs.asStateFlow()
+    private val _folderChats = MutableStateFlow<Map<Int, List<Chat>>>(emptyMap())
+    val folderChats = _folderChats.asStateFlow()
+    /** Create a real Telegram cloud folder, not a local fake category. */
+    fun createTelegramFolder(name: String, kind: String) {
+        val title = name.trim().take(12)
+        if (title.isBlank() || kind !in setOf("People", "Groups", "Channels")) return
+        val folder = TdApi.ChatFolder().apply {
+            this.name = TdApi.ChatFolderName(
+                TdApi.FormattedText(title, emptyArray()), false
+            )
+            colorId = -1
+            pinnedChatIds = longArrayOf()
+            includedChatIds = longArrayOf()
+            excludedChatIds = longArrayOf()
+            includeContacts = kind == "People"
+            includeNonContacts = kind == "People"
+            includeBots = kind == "People"
+            includeGroups = kind == "Groups"
+            includeChannels = kind == "Channels"
+        }
+        client?.send(TdApi.CreateChatFolder(folder)) { response ->
+            if (response is TdApi.Error) {
+                _chatActionError.value =
+                    "Folder creation rejected (Telegram code ${response.code})."
+            }
+        }
+    }
+
+    /** Delete only the folder, never leave any of its chats. */
+    fun deleteTelegramFolder(id: Int) {
+        if (id !in _folderTabs.value.map { it.id }) return
+        client?.send(TdApi.DeleteChatFolder(id, longArrayOf())) { response ->
+            if (response is TdApi.Error) {
+                _chatActionError.value = "Can't delete folder (Telegram code ${response.code})."
+            }
+        }
+    }
+
+    fun loadTelegramFolder(id: Int) {
+        if (id !in _folderTabs.value.map { it.id }) return
+        client?.send(TdApi.LoadChats(TdApi.ChatListFolder(id), 100)) { result ->
+            if (result is TdApi.Error && result.code != 404) {
+                _chatActionError.value = "Folder unavailable (Telegram code ${result.code})."
+            }
+        }
+    }
     private val _archivedChats = MutableStateFlow<List<Chat>>(emptyList())
     val archivedChats = _archivedChats.asStateFlow()
     private val _chatActionBusy = MutableStateFlow<Set<Long>>(emptySet())
@@ -84,10 +133,40 @@ class TdlibSession(private val context: Context) {
     private val fileStore = TdlibFileStore { client }
     private val discovery = TdlibDiscovery({ client }, fileStore)
     private val coreAccount = TdlibCoreAccount({ client }, fileStore)
+    private val coreSecurity = TdlibCoreSecurity { client }
+    val coreSecurityState = coreSecurity.state
+    fun refreshCoreSecurity() = coreSecurity.refresh()
+    fun updatePrivacyRule(key: String, audience: String) =
+        coreSecurity.changePrivacy(key, audience)
+    fun unblockTelegramUser(userId: Long) = coreSecurity.unblock(userId)
+    fun blockTelegramUser(userId: Long) = coreSecurity.block(userId)
+    fun blockTelegramPrivateChat(chatId: Long) {
+        client?.send(TdApi.GetChat(chatId)) { response ->
+            val userId = (response as? TdApi.Chat)?.type
+                .let { it as? TdApi.ChatTypePrivate }?.userId ?: return@send
+            coreSecurity.block(userId)
+        }
+    }
+    fun terminateOtherTelegramSession(sessionId: Long) = coreSecurity.terminateOtherDevice(sessionId)
+    private val communities = TdlibCoreCommunities { client }
+    val communityState = communities.state
+    fun inspectChatInfo(chatId: Long) = communities.inspect(chatId)
+    fun renameCommunity(chatId: Long, title: String) = communities.rename(chatId, title)
+    fun addCommunityMember(chatId: Long, userId: Long) = communities.addMember(chatId, userId)
+    fun describeCommunity(chatId: Long, about: String) = communities.description(chatId, about)
+    fun markTelegramChatUnread(chatId: Long, unread: Boolean) =
+        communities.markedUnread(chatId, unread)
+    fun makeCommunity(title: String, about: String, channel: Boolean, onChat: (Long) -> Unit) =
+        communities.createCommunity(title, about, channel, onChat)
+    fun generateChatInvite(chatId: Long) = communities.createInvite(chatId)
     val accountState = coreAccount.state
     fun refreshCoreAccount() = coreAccount.refresh()
     fun updateOwnProfile(first: String, last: String, bio: String) =
         coreAccount.saveProfile(first, last, bio)
+    fun updateOwnUsername(username: String) = coreAccount.changeUsername(username)
+    fun updateOwnPhoto(path: String) = coreAccount.uploadProfilePhoto(path)
+    fun addTelegramContact(username: String) = coreAccount.addContactByUsername(username)
+    fun removeTelegramContact(userId: Long) = coreAccount.removeContact(userId)
     fun openContactChat(userId: Long, onChat: (Long) -> Unit) =
         coreAccount.openContact(userId, onChat)
     fun openSavedMessages(onChat: (Long) -> Unit) = coreAccount.openSavedMessages(onChat)
@@ -524,6 +603,13 @@ class TdlibSession(private val context: Context) {
         notifications.onUpdate(obj)
         when (obj) {
             is TdApi.UpdateAuthorizationState -> onAuth(obj.authorizationState)
+            is TdApi.UpdateChatFolders -> {
+                _folderTabs.value = obj.chatFolders.orEmpty().map { folder ->
+                    ChatFolderTab(folder.id, folder.name?.text?.text.orEmpty()
+                        .ifBlank { "Folder" })
+                }
+                synchronized(known) { emitChats() }
+            }
             is TdApi.UpdateNewChat -> {
                 synchronized(known) {
                     known[obj.chat.id] = obj.chat
@@ -630,6 +716,8 @@ class TdlibSession(private val context: Context) {
                 messaging.clear()
                 expressions.clear()
                 coreAccount.clear()
+                coreSecurity.clear()
+                communities.clear()
                 messageSearch.clearAll()
                 messageActions.clear()
                 callInbox.clear()
@@ -648,6 +736,8 @@ class TdlibSession(private val context: Context) {
                     missingTitleRefreshes.clear()
                     _chats.value = emptyList()
                     _archivedChats.value = emptyList()
+                    _folderTabs.value = emptyList()
+                    _folderChats.value = emptyMap()
                 }
                 synchronized(chatActionLock) { _chatActionBusy.value = emptySet() }
                 _chatActionError.value = null
@@ -732,6 +822,20 @@ class TdlibSession(private val context: Context) {
         }
         _chats.value = buildList(false)
         _archivedChats.value = buildList(true)
+        _folderChats.value = _folderTabs.value.associate { folder ->
+            folder.id to known.values.asSequence()
+                .mapNotNull { chat ->
+                    val pos = chat.positions.firstOrNull {
+                        it.order > 0L &&
+                            (it.list as? TdApi.ChatListFolder)?.chatFolderId == folder.id
+                    }
+                    pos?.let { Triple(chat, it.order, it.isPinned) }
+                }
+                .sortedWith(compareByDescending<Triple<TdApi.Chat, Long, Boolean>> { it.third }
+                    .thenByDescending { it.second })
+                .map { (chat, _, pinned) -> mapChat(chat, false, pinned) }
+                .toList()
+        }
     }
 
     fun submitPhone(phone: String) {
@@ -762,6 +866,8 @@ class TdlibSession(private val context: Context) {
         messageSearch.clearAll()
         expressions.clear()
         coreAccount.clear()
+        coreSecurity.clear()
+        communities.clear()
         callInbox.clear()
         nativeCalls.clear()
         incomingCallAlerts.clear()
