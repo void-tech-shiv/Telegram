@@ -136,6 +136,8 @@ class TdlibSession(private val context: Context) {
     private val coreSecurity = TdlibCoreSecurity { client }
     val coreSecurityState = coreSecurity.state
     fun refreshCoreSecurity() = coreSecurity.refresh()
+    fun updatePrivacyRule(key: String, audience: String) =
+        coreSecurity.changePrivacy(key, audience)
     fun unblockTelegramUser(userId: Long) = coreSecurity.unblock(userId)
     fun blockTelegramUser(userId: Long) = coreSecurity.block(userId)
     fun blockTelegramPrivateChat(chatId: Long) {
