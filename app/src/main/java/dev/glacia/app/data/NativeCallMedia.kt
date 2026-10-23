@@ -2,6 +2,8 @@ package dev.glacia.app.data
 
 import android.content.Context
 import android.media.AudioManager
+import android.media.AudioDeviceInfo
+import android.os.Build
 import android.util.Log
 import io.github.pytgcalls.NTgCalls
 import io.github.pytgcalls.media.AudioDescription
@@ -48,6 +50,7 @@ internal class NativeCallMedia(
     @Volatile private var signalingReady = false
     private var cameraDeviceMetadata: String? = null
     private var activeVideoCall = false
+    private var bluetoothCommunicationDeviceSelected = false
     private inline fun <T> step(name: String, action: () -> T): T {
         Log.i("GLACIA-VoIP", "media_stage=$name")
         return try { action() }
@@ -217,8 +220,34 @@ internal class NativeCallMedia(
     }
 
     fun setSpeaker(speaker: Boolean) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            bluetoothCommunicationDeviceSelected) {
+            audio.clearCommunicationDevice()
+            bluetoothCommunicationDeviceSelected = false
+        }
         @Suppress("DEPRECATION")
         audio.isSpeakerphoneOn = speaker
+    }
+
+    /**
+     * Android 12+ routes microphone + playback to an already-connected headset.
+     * Permissions are requested by UI only after explicit user tap.
+     * Returns false when no paired communication headset is available.
+     */
+    fun selectBluetooth(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || mediaUserId == 0L ||
+            !connected || !routed) return false
+        val device = audio.availableCommunicationDevices.firstOrNull { entry ->
+            entry.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                entry.type == AudioDeviceInfo.TYPE_HEARING_AID ||
+                (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && (
+                    entry.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                        entry.type == AudioDeviceInfo.TYPE_BLE_SPEAKER
+                ))
+        } ?: return false
+        val success = audio.setCommunicationDevice(device)
+        if (success) bluetoothCommunicationDeviceSelected = true
+        return success
     }
 
     fun stop() {
@@ -232,6 +261,11 @@ internal class NativeCallMedia(
         cameraDeviceMetadata = null
         if (routed) {
             routed = false
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                bluetoothCommunicationDeviceSelected) {
+                runCatching { audio.clearCommunicationDevice() }
+                bluetoothCommunicationDeviceSelected = false
+            }
             @Suppress("DEPRECATION")
             runCatching { audio.isSpeakerphoneOn = false }
             runCatching { audio.mode = originalMode }
