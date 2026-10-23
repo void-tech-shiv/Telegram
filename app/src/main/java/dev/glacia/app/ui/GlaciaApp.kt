@@ -551,6 +551,7 @@ private fun GlaciaApp(
                         filePaths = photoPaths,
                         documentTransfers = documentTransfers,
                         onDownloadDocument = { session.requestDocumentDownload(it) },
+                        onRetryDownload = { session.retryMediaDownload(it) },
                         loading = current.id in loadingChats,
                         error = messageErrors[current.id],
                         dark = dark,
