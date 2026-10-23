@@ -233,7 +233,7 @@ fun ConversationScreen(
                                             modifier = Modifier.size(15.dp)
                                         )
                                         Spacer(Modifier.width(4.dp))
-                                        Text("Video preview only", color = foreground, fontSize = 10.sp)
+                                        Text("Video thumbnail", color = foreground, fontSize = 10.sp)
                                     }
                                 }
                                 Spacer(Modifier.height(7.dp))
@@ -425,13 +425,25 @@ fun ConversationScreen(
                                     }
                                 }
                             } else if (msg.mediaType != "voice" && msg.mediaType != "audio") {
-                                Text(
-                                    msg.text,
-                                    color = foreground,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontSize = 15.sp,
-                                    lineHeight = 21.sp
-                                )
+                                // Media already has a visual preview and a dedicated action.
+                                // Show its actual caption, but avoid duplicating the "Photo"
+                                // or "Video" placeholder beneath the media controls.
+                                val displayText = when (msg.mediaType) {
+                                    "photo" -> msg.text.removePrefix("📷 Photo")
+                                        .removePrefix(" · ").trim()
+                                    "video" -> msg.text.removePrefix("🎥 Video")
+                                        .removePrefix(" · ").trim()
+                                    else -> msg.text
+                                }
+                                if (displayText.isNotEmpty()) {
+                                    Text(
+                                        displayText,
+                                        color = foreground,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontSize = 15.sp,
+                                        lineHeight = 21.sp
+                                    )
+                                }
                             }
                             Spacer(Modifier.height(5.dp))
                             Text(
