@@ -24,10 +24,13 @@ android {
         applicationId = "dev.glacia.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 16
-        versionName = "0.3.10"
+        versionCode = 17
+        versionName = "0.3.11"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("boolean", "FCM_CONFIGURED", "${file("google-services.json").isFile}")
+        // Must be explicitly opted into by a local developer build; no shipped calling claims.
+        buildConfigField("boolean", "EXPERIMENTAL_NATIVE_CALLS",
+            "${providers.gradleProperty("glacia.experimentalNativeCalls").orNull == "true"}")
         buildConfigField("int", "TELEGRAM_API_ID", "$telegramApiId")
         buildConfigField("String", "TELEGRAM_API_HASH", "\"$telegramApiHash\"")
     }
@@ -67,6 +70,8 @@ dependencies {
     implementation("dev.chrisbanes.haze:haze:2.0.1")
     implementation("dev.chrisbanes.haze:haze-glass:2.0.1")
     implementation("io.github.tdlib-android:core:0.1.1")
+    // Native libwebrtc/ntgcalls (LGPL-3.0). Calls disabled by default until device QA.
+    implementation("io.github.pytgcalls:ntgcalls:3.0.0")
     implementation("io.coil-kt.coil3:coil-compose:3.6.3")
     implementation(platform("com.google.firebase:firebase-bom:35.0.2"))
     implementation("com.google.firebase:firebase-messaging")
