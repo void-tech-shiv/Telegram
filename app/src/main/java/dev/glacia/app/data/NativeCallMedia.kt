@@ -35,7 +35,8 @@ internal class NativeCallMedia(
     private val context: Context,
     private val onSignaling: (Int, ByteArray) -> Unit,
     private val onConnection: (Int, String) -> Unit,
-    private val onRemoteFrame: (Int, Frame) -> Unit
+    private val onRemoteFrame: (Int, Frame) -> Unit,
+    private val onLocalFrame: (Int, Frame) -> Unit
 ) {
     private var native: NTgCalls? = null
     @Volatile private var mediaUserId: Long = 0
@@ -45,6 +46,8 @@ internal class NativeCallMedia(
     private var routed = false
     @Volatile private var connected = false
     @Volatile private var signalingReady = false
+    private var cameraDeviceMetadata: String? = null
+    private var activeVideoCall = false
     private inline fun <T> step(name: String, action: () -> T): T {
         Log.i("GLACIA-VoIP", "media_stage=$name")
         return try { action() }
@@ -79,6 +82,7 @@ internal class NativeCallMedia(
         }
         signalingReady = false
         connected = false
+        activeVideoCall = call.isVideo
         val instance = native ?: NTgCalls().also { native = it }
         // TDLib uses call.id for signaling. NTgCalls identifies the session by user.id.
         // Always map callback data to the currently active TDLib call in the controller.
@@ -96,8 +100,14 @@ internal class NativeCallMedia(
             }
         }
         instance.onFrames { id, mode, device, frames ->
-            if (id == mediaUserId && mode == StreamMode.PLAYBACK && device == StreamDevice.CAMERA) {
-                frames.forEach { frame -> onRemoteFrame(call.id, frame) }
+            if (id == mediaUserId && device == StreamDevice.CAMERA) {
+                when (mode) {
+                    StreamMode.PLAYBACK ->
+                        frames.forEach { frame -> onRemoteFrame(call.id, frame) }
+                    StreamMode.CAPTURE ->
+                        frames.forEach { frame -> onLocalFrame(call.id, frame) }
+                    else -> Unit
+                }
             }
         }
 
@@ -110,6 +120,7 @@ internal class NativeCallMedia(
         val camera = if (call.isVideo) step("camera_enumeration") {
             val device = NTgCalls.getMediaDevices().camera.firstOrNull()
                 ?: error("No camera available for native video calling.")
+            cameraDeviceMetadata = device.metadata
             VideoDescription(MediaSource.DEVICE, 640, 480, 24, device.metadata, true)
         } else null
         val remoteVideo = if (call.isVideo) {
@@ -180,6 +191,28 @@ internal class NativeCallMedia(
         if (data.isNotEmpty() && canReceiveSignaling()) native?.sendSignalingData(mediaUserId, data)
     }
 
+    /**
+     * Switch the actual NTgCalls capture device; do not start a second camera or
+     * fabricate a local preview. Caller guarantees exclusive worker access.
+     */
+    fun switchCamera(): Boolean {
+        val id = mediaUserId
+        if (!activeVideoCall || id == 0L || !connected) return false
+        val cameras = NTgCalls.getMediaDevices().camera
+        if (cameras.size < 2) return false
+        val from = cameras.indexOfFirst { it.metadata == cameraDeviceMetadata }
+        val next = cameras[(from + 1).coerceAtLeast(0) % cameras.size]
+        val mic = AudioDescription(
+            MediaSource.DEVICE, 48000, 2, "{\\"is_microphone\\":true}", true
+        )
+        val camera = VideoDescription(MediaSource.DEVICE, 640, 480, 24, next.metadata, true)
+        native?.setStreamSources(
+            id, StreamMode.CAPTURE, MediaDescription(mic, null, camera, null)
+        ) ?: return false
+        cameraDeviceMetadata = next.metadata
+        return true
+    }
+
     fun setMuted(muted: Boolean) {
         if (mediaUserId == 0L) return
         if (muted) native?.mute(mediaUserId) else native?.unmute(mediaUserId)
@@ -197,6 +230,8 @@ internal class NativeCallMedia(
         if (userId != 0L) runCatching { native?.stop(userId) }
         native = null
         connected = false
+        activeVideoCall = false
+        cameraDeviceMetadata = null
         if (routed) {
             routed = false
             @Suppress("DEPRECATION")
