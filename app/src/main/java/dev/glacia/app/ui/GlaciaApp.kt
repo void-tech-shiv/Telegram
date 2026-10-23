@@ -235,6 +235,28 @@ private fun GlaciaApp(
     }
     val current = (liveChats + discovered + listOfNotNull(notificationTarget))
         .firstOrNull { it.id == openChatId }
+    var callHandoffPrompt by remember(current?.id) { mutableStateOf(false) }
+    if (callHandoffPrompt && current != null) {
+        AlertDialog(
+            onDismissRequest = { callHandoffPrompt = false },
+            title = { Text("Voice / video call") },
+            text = {
+                Text(
+                    "GLACIA doesn't have native in-app calling yet. Open this contact's " +
+                        "profile in the official Telegram app, then start a call there?"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    callHandoffPrompt = false
+                    session.openCallContact(current.id)
+                }) { Text("Open Telegram") }
+            },
+            dismissButton = {
+                TextButton(onClick = { callHandoffPrompt = false }) { Text("Cancel") }
+            }
+        )
+    }
     DisposableEffect(session, current?.id) {
         session.setVisibleChat(current?.id)
         onDispose { session.setVisibleChat(null) }
@@ -317,9 +339,7 @@ private fun GlaciaApp(
                             )
                         }
                         if (!current.isGroup) {
-                            IconButton(onClick = {
-                                session.openCallContact(current.id)
-                            }) {
+                            IconButton(onClick = { callHandoffPrompt = true }) {
                                 Icon(
                                     Icons.Rounded.Call,
                                     "Open contact in Telegram for voice/video call",
