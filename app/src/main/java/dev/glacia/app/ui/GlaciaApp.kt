@@ -745,15 +745,15 @@ private fun GlaciaApp(
                             dark = dark,
                             onOpen = { openChatId = it.id }
                         )
-                        "Contacts" -> CoreContactsScreen(
+                        "Contacts" -> CompactContactsHome(
                             state = coreAccount,
-                            filePaths = photoPaths,
+                            paths = photoPaths,
                             dark = dark,
                             onRefresh = session::refreshCoreAccount,
-                            onAddContact = session::addTelegramContact,
-                            onRemoveContact = session::removeTelegramContact,
+                            onAdd = session::addTelegramContact,
+                            onRemove = session::removeTelegramContact,
                             onDismissNotice = session::clearAccountNotice,
-                            onOpenSavedMessages = {
+                            onSaved = {
                                 session.openSavedMessages { chatId ->
                                     coreScope.launch {
                                         session.ensureChat(chatId)
@@ -762,7 +762,7 @@ private fun GlaciaApp(
                                     }
                                 }
                             },
-                            onOpenContact = { userId ->
+                            onOpen = { userId ->
                                 session.openContactChat(userId) { chatId ->
                                     coreScope.launch {
                                         session.ensureChat(chatId)
