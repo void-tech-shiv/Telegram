@@ -20,6 +20,22 @@ class TelegramCallHandoff(
     private val client: () -> Client?,
     private val error: (Long, String) -> Unit
 ) {
+    /**
+     * For an incoming call, launch the official app without assuming that
+     * the caller has a public username. The user must answer there manually.
+     * No GLACIA microphone/video permission is needed for this external path.
+     */
+    fun openOfficialApp(): Boolean = try {
+        val launch = context.packageManager.getLaunchIntentForPackage("org.telegram.messenger")
+        if (launch == null) false
+        else {
+            context.startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            true
+        }
+    } catch (_: Exception) {
+        false
+    }
+
     fun openContact(chatId: Long) {
         val active = client() ?: run {
             error(chatId, "Telegram is offline; cannot open contact profile.")
