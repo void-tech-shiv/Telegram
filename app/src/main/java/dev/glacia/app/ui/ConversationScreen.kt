@@ -28,6 +28,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.glacia.app.data.Chat
 import dev.glacia.app.data.Message
+import coil3.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
+import java.io.File
 
 /**
  * Live chat UI. Initial history, older pages and incoming messages come from TDLib.
@@ -37,6 +40,7 @@ import dev.glacia.app.data.Message
 fun ConversationScreen(
     chat: Chat,
     messages: List<Message>,
+    filePaths: Map<Int, String>,
     loading: Boolean,
     error: String?,
     dark: Boolean,
@@ -118,6 +122,27 @@ fun ConversationScreen(
                                 )
                                 .padding(horizontal = 15.dp, vertical = 11.dp)
                         ) {
+                            val thumbnailPath = msg.mediaFileId?.let(filePaths::get)
+                            if (thumbnailPath != null) {
+                                AsyncImage(
+                                    model = File(thumbnailPath),
+                                    contentDescription = msg.mediaType?.let { "$it thumbnail" },
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.widthIn(max = 270.dp)
+                                        .fillMaxWidth()
+                                        .heightIn(max = 220.dp)
+                                        .height(190.dp)
+                                        .clip(RoundedCornerShape(14.dp))
+                                )
+                                Spacer(Modifier.height(8.dp))
+                            } else if (msg.mediaType != null) {
+                                Text(
+                                    "Loading media preview…",
+                                    color = secondary,
+                                    fontSize = 12.sp
+                                )
+                                Spacer(Modifier.height(4.dp))
+                            }
                             Text(
                                 msg.text,
                                 color = foreground,
