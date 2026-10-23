@@ -132,11 +132,16 @@ class TdlibMessages(
                     snapshots[update.chatId] = list.map {
                         if (it.id == update.messageId) {
                             val thumbnail = thumbnailFor(update.newContent)
+                            val attachment = (update.newContent as? TdApi.MessageDocument)?.document
                             files.ensure(thumbnail)
+                            files.observeExisting(attachment?.document)
                             it.copy(
                                 text = displayContent(update.newContent),
                                 mediaType = mediaType(update.newContent),
-                                mediaFileId = thumbnail?.id
+                                mediaFileId = thumbnail?.id,
+                                attachmentFileId = attachment?.document?.id,
+                                attachmentName = attachment?.fileName,
+                                attachmentMime = attachment?.mimeType
                             )
                         } else it
                     }
@@ -150,7 +155,9 @@ class TdlibMessages(
     private fun fromTd(message: TdApi.Message): Message {
         val label = displayContent(message.content)
         val thumbnail = thumbnailFor(message.content)
+        val attachment = (message.content as? TdApi.MessageDocument)?.document
         files.ensure(thumbnail)
+        files.observeExisting(attachment?.document)
         val clock = if (message.date > 0)
             DateFormat.getTimeInstance(DateFormat.SHORT, Locale.getDefault())
                 .format(Date(message.date.toLong() * 1000L))
@@ -165,7 +172,10 @@ class TdlibMessages(
             sending = message.sendingState is TdApi.MessageSendingStatePending,
             failed = message.sendingState is TdApi.MessageSendingStateFailed,
             mediaType = mediaType(message.content),
-            mediaFileId = thumbnail?.id
+            mediaFileId = thumbnail?.id,
+            attachmentFileId = attachment?.document?.id,
+            attachmentName = attachment?.fileName,
+            attachmentMime = attachment?.mimeType
         )
     }
 
@@ -187,6 +197,7 @@ class TdlibMessages(
             })?.photo
         }
         is TdApi.MessageVideo -> content.video?.thumbnail?.file
+        is TdApi.MessageDocument -> content.document?.thumbnail?.file
         else -> null
     }
 
