@@ -9,6 +9,10 @@ import org.drinkless.tdlib.TdApi
 /** Ephemeral activity: never store in database or keep stale "typing" forever. */
 data class TypingActivity(val label: String, val expiresAt: Long)
 
+object TypingStatePolicy {
+    fun isActive(expiresAt: Long, now: Long): Boolean = expiresAt > now
+}
+
 class TdlibTyping(private val client: () -> Client?) {
     private val lock = Any()
     private val _activity = MutableStateFlow<Map<Long, TypingActivity>>(emptyMap())
@@ -40,7 +44,7 @@ class TdlibTyping(private val client: () -> Client?) {
     fun prune() {
         val now = SystemClock.elapsedRealtime()
         synchronized(lock) {
-            _activity.value = _activity.value.filterValues { it.expiresAt > now }
+            _activity.value = _activity.value.filterValues { TypingStatePolicy.isActive(it.expiresAt, now) }
         }
     }
 
