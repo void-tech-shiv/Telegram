@@ -772,24 +772,36 @@ private fun GlaciaApp(
                                 }
                             }
                         )
-                        "Profile" -> Column(
-                            Modifier.fillMaxSize().verticalScroll(rememberScrollState())
-                                .padding(horizontal = 18.dp, vertical = 20.dp)
-                        ) {
-                            Text("Profile", color = ink(dark), fontSize = 28.sp,
-                                fontWeight = FontWeight.Bold)
-                            Spacer(Modifier.height(16.dp))
-                            CoreProfileSection(
-                                state = coreAccount,
-                                filePaths = photoPaths,
-                                dark = dark,
-                                onRefresh = session::refreshCoreAccount,
-                                onSave = session::updateOwnProfile,
-                                onSaveUsername = session::updateOwnUsername,
-                                onSavePhoto = session::updateOwnPhoto,
-                                onDismissNotice = session::clearAccountNotice
-                            )
-                        }
+                        "Profile" -> if (profileEditing) {
+                            Column(
+                                Modifier.fillMaxSize().background(coreSurface(dark))
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(horizontal = 16.dp)
+                            ) {
+                                CompactPageHeader("Edit Profile", dark) {
+                                    profileEditing = false
+                                }
+                                CoreProfileSection(
+                                    state = coreAccount,
+                                    filePaths = photoPaths, dark = dark,
+                                    onRefresh = session::refreshCoreAccount,
+                                    onSave = session::updateOwnProfile,
+                                    onSaveUsername = session::updateOwnUsername,
+                                    onSavePhoto = session::updateOwnPhoto,
+                                    onDismissNotice = session::clearAccountNotice
+                                )
+                            }
+                        } else CompactProfileHome(
+                            dark = dark,
+                            account = coreAccount,
+                            paths = photoPaths,
+                            onEdit = { profileEditing = true },
+                            onSettings = {
+                                settingsPage = "Home"
+                                tab = "Settings"
+                            },
+                            onRefresh = session::refreshCoreAccount
+                        )
                         "Discover" -> TelegramDiscoverScreen(
                             dark = dark,
                             photoPaths = photoPaths,
