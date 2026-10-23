@@ -18,6 +18,7 @@ fun AuthScreen(state: TdlibSession.Auth, session: TdlibSession) {
     var password by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     val notice by session.notice.collectAsState()
+    val busy by session.authBusy.collectAsState()
 
     Column(
         modifier = Modifier.fillMaxSize().safeDrawingPadding().padding(28.dp),
@@ -38,7 +39,7 @@ fun AuthScreen(state: TdlibSession.Auth, session: TdlibSession) {
                 OutlinedTextField(phone, { phone = it }, label = { Text("Phone number (+91...)") },
                     singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone))
                 Spacer(Modifier.height(12.dp))
-                Button(onClick = {
+                Button(enabled = !busy && phone.isNotBlank(), onClick = {
                     error = null
                     try { session.submitPhone(phone.trim()) }
                     catch (_: IllegalArgumentException) { error = "Enter a valid international phone number." }
@@ -47,9 +48,11 @@ fun AuthScreen(state: TdlibSession.Auth, session: TdlibSession) {
             TdlibSession.Auth.Code -> {
                 Text("Enter the code sent by Telegram (often in another Telegram app).")
                 OutlinedTextField(code, { code = it }, label = { Text("Login code") },
-                    singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword))
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword))
                 Spacer(Modifier.height(12.dp))
-                Button(enabled = code.isNotBlank(), onClick = {
+                Button(enabled = !busy && code.isNotBlank(), onClick = {
                     session.submitCode(code.trim()); code = ""
                 }) { Text("Verify") }
             }
@@ -59,7 +62,7 @@ fun AuthScreen(state: TdlibSession.Auth, session: TdlibSession) {
                     label = { Text("2FA password") },
                     visualTransformation = PasswordVisualTransformation(), singleLine = true)
                 Spacer(Modifier.height(12.dp))
-                Button(enabled = password.isNotBlank(), onClick = {
+                Button(enabled = !busy && password.isNotBlank(), onClick = {
                     session.submitPassword(password); password = ""
                 }) { Text("Unlock") }
             }
@@ -74,6 +77,10 @@ fun AuthScreen(state: TdlibSession.Auth, session: TdlibSession) {
                     style = MaterialTheme.typography.bodySmall)
             }
             TdlibSession.Auth.Ready -> Text("Connected")
+        }
+        if (busy) {
+            Spacer(Modifier.height(12.dp))
+            LinearProgressIndicator(Modifier.fillMaxWidth())
         }
         error?.let {
             Spacer(Modifier.height(12.dp))
