@@ -252,6 +252,7 @@ class TdlibSession(private val context: Context) {
     private val expressions = TdlibExpressions({ client }, fileStore, messaging)
     val expressionState = expressions.state
     fun loadExpressions() = expressions.load()
+    fun loadStickerPack(setId: Long) = expressions.loadPack(setId)
     fun sendExpression(chatId: Long, item: ExpressionOption, replyTo: Long? = null) =
         expressions.send(chatId, item, replyTo)
     private val messageSearch = TdlibMessageSearch { client }
