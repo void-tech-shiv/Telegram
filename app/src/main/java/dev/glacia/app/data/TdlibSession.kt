@@ -86,6 +86,7 @@ class TdlibSession(private val context: Context) {
     fun sendTypingAction(chatId: Long, typingNow: Boolean) = typing.sendTyping(chatId, typingNow)
     fun pruneTyping() = typing.prune()
     fun setAppForeground(foreground: Boolean) = notifications.setForeground(foreground)
+    fun setVisibleChat(chatId: Long?) = notifications.setVisibleChat(chatId)
     val discoveryResults = discovery.results
     val discoveryLoading = discovery.loading
     val discoveryError = discovery.error
