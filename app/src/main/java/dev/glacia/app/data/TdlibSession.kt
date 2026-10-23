@@ -90,6 +90,13 @@ class TdlibSession(private val context: Context) {
         notifications.setTitleResolver { id ->
             synchronized(known) { known[id]?.title }
         }
+        notifications.setMuteResolver { id ->
+            synchronized(known) {
+                known[id]?.notificationSettings?.let { settings ->
+                    !settings.useDefaultMuteFor && settings.muteFor > 0
+                } ?: false
+            }
+        }
     }
 
     private val _notificationTargetChat = MutableStateFlow<Chat?>(null)
