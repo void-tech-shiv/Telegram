@@ -291,7 +291,7 @@ class TdlibSession(private val context: Context) {
                 .thenByDescending { it.first.id })
             .map { (chat, _) ->
                 val preview = when (val content = chat.lastMessage?.content) {
-                    is TdApi.MessageText -> content.text?.text.orEmpty()
+                    is TdApi.MessageText -> ChatPreviewPrivacy.safePreview(content.text?.text.orEmpty())
                     is TdApi.MessagePhoto -> "📷 Photo"
                     is TdApi.MessageVideo -> "🎥 Video"
                     is TdApi.MessageVoiceNote -> "🎤 Voice note"
