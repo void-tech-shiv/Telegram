@@ -50,10 +50,10 @@ class TdlibDiscovery(
             }
             return
         }
-        active.send(TdApi.SearchChats(query, 30)) { reply ->
+        active.send(TdApi.SearchChats(query, null, 30)) { reply ->
             handleMatches(active, token, reply)
         }
-        active.send(TdApi.SearchPublicChats(query)) { reply ->
+        active.send(TdApi.SearchPublicChats(query, null)) { reply ->
             handleMatches(active, token, reply)
         }
     }
