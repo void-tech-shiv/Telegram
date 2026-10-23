@@ -36,6 +36,7 @@ class TdlibSession(private val context: Context) {
     private val _chats = MutableStateFlow<List<Chat>>(emptyList())
     val chats = _chats.asStateFlow()
     private val known = linkedMapOf<Long, TdApi.Chat>()
+    private val missingTitleRefreshes = mutableSetOf<Long>()
     private var client: Client? = null
     private val fileStore = TdlibFileStore { client }
     val filePaths = fileStore.paths
@@ -174,11 +175,36 @@ class TdlibSession(private val context: Context) {
             is TdApi.AuthorizationStateClosed -> {
                 messaging.clear()
                 fileStore.clear()
-                synchronized(known) { known.clear(); _chats.value = emptyList() }
+                synchronized(known) {
+                    known.clear()
+                    missingTitleRefreshes.clear()
+                    _chats.value = emptyList()
+                }
                 client = null
                 _auth.value = Auth.Starting
             }
             else -> _auth.value = Auth.Starting
+        }
+    }
+
+    private fun requestMissingTitle(chat: TdApi.Chat) {
+        if (chat.title.isNotBlank() || !missingTitleRefreshes.add(chat.id)) return
+        client?.send(TdApi.GetChat(chat.id)) { result ->
+            if (result is TdApi.Chat && result.title.isNotBlank()) {
+                synchronized(known) {
+                    known[result.id] = result
+                    emitChats()
+                }
+            }
+        }
+    }
+
+    private fun fallbackChatTitle(chat: TdApi.Chat): String {
+        if (chat.title.isNotBlank()) return chat.title
+        return when (chat.type) {
+            is TdApi.ChatTypePrivate -> "Unavailable contact"
+            is TdApi.ChatTypeSecret -> "Unavailable secret chat"
+            else -> "Unavailable group or channel"
         }
     }
 
@@ -209,9 +235,10 @@ class TdlibSession(private val context: Context) {
                     else -> "Other message"
                 }
                 fileStore.ensure(chat.photo?.small)
+                requestMissingTitle(chat)
                 Chat(
                     id = chat.id,
-                    title = chat.title,
+                    title = fallbackChatTitle(chat),
                     username = "",
                     preview = preview,
                     time = "",
