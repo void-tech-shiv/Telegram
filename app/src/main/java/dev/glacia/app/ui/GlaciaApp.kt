@@ -234,6 +234,42 @@ private fun GlaciaApp(
     val chatMuteStates by session.chatMuteStates.collectAsState()
     val expressions by session.expressionState.collectAsState()
     val coreAccount by session.accountState.collectAsState()
+    val coreSecurity by session.coreSecurityState.collectAsState()
+    val community by session.communityState.collectAsState()
+    var showCreateCommunity by remember { mutableStateOf(false) }
+    var showChatInfo by remember { mutableStateOf(false) }
+    if (showCreateCommunity) {
+        CoreCreateCommunityDialog(
+            state = community,
+            onDismiss = { showCreateCommunity = false },
+            onCreate = { name, about, channel ->
+                session.makeCommunity(name, about, channel) { id ->
+                    coreScope.launch {
+                        session.ensureChat(id)
+                        openChatId = id
+                        tab = "Chats"
+                        showCreateCommunity = false
+                    }
+                }
+            }
+        )
+    }
+    if (showChatInfo && openChatId != null) {
+        val id = openChatId!!
+        CoreChatInfoDialog(
+            state = community,
+            onDismiss = { showChatInfo = false },
+            onRename = { session.renameCommunity(id, it) },
+            onDescription = { session.describeCommunity(id, it) },
+            onInvite = { session.generateChatInvite(id) },
+            onUnread = { session.markTelegramChatUnread(id, true) },
+            onJumpPinned = { messageId ->
+                session.loadMessageAround(id, messageId)
+                showChatInfo = false
+            },
+            onBlock = { session.blockTelegramPrivateChat(id) }
+        )
+    }
     LaunchedEffect(tab) {
         if (tab == "Contacts" || tab == "Settings") session.refreshCoreAccount()
     }
@@ -491,7 +527,12 @@ private fun GlaciaApp(
                         Avatar(current.title, current.id, Modifier.size(42.dp),
                             photoPath = current.photoFileId?.let(photoPaths::get))
                         Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) {
+                        Column(
+                            Modifier.weight(1f).clickable {
+                                showChatInfo = true
+                                session.inspectChatInfo(current.id)
+                            }
+                        ) {
                             Text(current.title, color = ink(dark), fontWeight = FontWeight.Bold,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis)
                             val typingNow = typingByChat[current.id] != null
@@ -518,6 +559,13 @@ private fun GlaciaApp(
                                     tint = accent(dark)
                                 )
                             }
+                        }
+                        IconButton(onClick = {
+                            showChatInfo = true
+                            session.inspectChatInfo(current.id)
+                        }) {
+                            Icon(Icons.Rounded.MoreVert, "Chat information and admin actions",
+                                tint = accent(dark))
                         }
                         val muted = chatMuteStates[current.id] == true
                         IconButton(
@@ -633,6 +681,7 @@ private fun GlaciaApp(
                             onDismissActionError = session::dismissChatActionError,
                             onTogglePin = session::toggleChatPinned,
                             onToggleArchive = { id, archive -> session.setChatArchived(id, archive) },
+                            onCreateCommunity = { showCreateCommunity = true },
                             dark = dark,
                             onOpen = { openChatId = it.id }
                         )
@@ -641,6 +690,8 @@ private fun GlaciaApp(
                             filePaths = photoPaths,
                             dark = dark,
                             onRefresh = session::refreshCoreAccount,
+                            onAddContact = session::addTelegramContact,
+                            onRemoveContact = session::removeTelegramContact,
                             onDismissNotice = session::clearAccountNotice,
                             onOpenSavedMessages = {
                                 session.openSavedMessages { chatId ->
@@ -677,8 +728,14 @@ private fun GlaciaApp(
                             coreAccount, photoPaths,
                             session::refreshCoreAccount,
                             session::updateOwnProfile,
+                            session::updateOwnUsername,
+                            session::updateOwnPhoto,
                             session::clearAccountNotice,
                             session::logoutThisDevice,
+                            coreSecurity,
+                            session::refreshCoreSecurity,
+                            session::terminateOtherTelegramSession,
+                            session::unblockTelegramUser,
                             notificationPermission, onNotificationPermission,
                             onTestNotification, onOpenNotificationSettings,
                             notificationSetup, notificationEvents, notificationHealth,
@@ -770,6 +827,7 @@ private fun ChatList(
     onDismissActionError: () -> Unit,
     onTogglePin: (Long) -> Unit,
     onToggleArchive: (Long, Boolean) -> Unit,
+    onCreateCommunity: () -> Unit,
     dark: Boolean,
     onOpen: (Chat) -> Unit
 ) {
@@ -788,7 +846,10 @@ private fun ChatList(
                 Spacer(Modifier.height(5.dp))
                 Text("All your chats, with a little more magic.",
                     fontSize = 13.sp, color = mutedInk(dark))
-                Spacer(Modifier.height(18.dp))
+                TextButton(onClick = onCreateCommunity) {
+                    Text("+ New Telegram group or channel")
+                }
+                Spacer(Modifier.height(8.dp))
                 Row(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
                         .background(tile(dark))
@@ -1029,8 +1090,14 @@ private fun SettingsScreen(
     filePaths: Map<Int, String>,
     onRefreshProfile: () -> Unit,
     onSaveProfile: (String, String, String) -> Unit,
+    onSaveUsername: (String) -> Unit,
+    onSavePhoto: (String) -> Unit,
     onDismissProfileNotice: () -> Unit,
     onLogout: () -> Unit,
+    coreSecurity: dev.glacia.app.data.CoreSecurityState,
+    onRefreshSecurity: () -> Unit,
+    onTerminateSession: (Long) -> Unit,
+    onUnblock: (Long) -> Unit,
     notificationPermission: Boolean,
     onNotificationPermission: () -> Unit,
     onTestNotification: () -> Boolean,
@@ -1071,9 +1138,18 @@ private fun SettingsScreen(
             dark = dark,
             onRefresh = onRefreshProfile,
             onSave = onSaveProfile,
+            onSaveUsername = onSaveUsername,
+            onSavePhoto = onSavePhoto,
             onDismissNotice = onDismissProfileNotice
         )
         Spacer(Modifier.height(23.dp))
+        CoreSecuritySection(
+            state = coreSecurity,
+            onRefresh = onRefreshSecurity,
+            onTerminate = onTerminateSession,
+            onUnblock = onUnblock
+        )
+        Spacer(Modifier.height(17.dp))
         Text("APPEARANCE", color = accent(dark),
             fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp, fontSize = 11.sp)
         Spacer(Modifier.height(6.dp))
