@@ -21,6 +21,7 @@ data class NativeCallUi(
     val peer: String = "Telegram contact",
     val muted: Boolean = false,
     val speaker: Boolean = false,
+    val bluetooth: Boolean = false,
     val error: String? = null,
     /** Monotonic clock, set only after real NTgCalls CONNECTED. */
     val connectedAtElapsedMs: Long? = null
@@ -118,6 +119,7 @@ class NativeCallController(
                         },
                         peer = old?.peer ?: "Telegram contact",
                         muted = old?.muted ?: false, speaker = old?.speaker ?: false,
+                        bluetooth = old?.bluetooth ?: false,
                         error = old?.error,
                         connectedAtElapsedMs = old?.connectedAtElapsedMs
                     )
@@ -272,8 +274,26 @@ class NativeCallController(
         val id = _call.value?.callId ?: return
         worker.execute {
             runCatching { media?.setSpeaker(speaker) }.onSuccess {
-                _call.value = _call.value?.takeIf { it.callId == id }?.copy(speaker = speaker)
+                _call.value = _call.value?.takeIf { it.callId == id }?.copy(speaker = speaker, bluetooth = false)
             }.onFailure { changeError(id, "Audio routing failed.") }
+        }
+    }
+
+    fun useBluetooth() {
+        val id = _call.value?.takeIf { it.phase == "Connected" }?.callId ?: return
+        worker.execute {
+            try {
+                if (media?.selectBluetooth() == true) {
+                    synchronized(lock) {
+                        _call.value = _call.value?.takeIf { it.callId == id }
+                            ?.copy(bluetooth = true, speaker = false, error = null)
+                    }
+                } else changeError(id, "Connect a Bluetooth headset and retry.")
+            } catch (_: SecurityException) {
+                changeError(id, "Bluetooth permission is required.")
+            } catch (_: Throwable) {
+                changeError(id, "Bluetooth call route could not be selected.")
+            }
         }
     }
 
