@@ -28,7 +28,17 @@ class TdlibMessageActions(
 
     fun properties(chatId: Long, messageId: Long) {
         if (messageId <= 0) return
-        client()?.send(TdApi.GetMessageProperties(chatId, messageId)) { result ->
+        synchronized(lock) { _permissions.value = _permissions.value - (chatId to messageId) }
+        val active = client()
+        if (active == null) {
+            messages.reportError(chatId, "Telegram connection unavailable.")
+            synchronized(lock) {
+                _permissions.value = _permissions.value +
+                    ((chatId to messageId) to MessageActionPermissions())
+            }
+            return
+        }
+        active.send(TdApi.GetMessageProperties(chatId, messageId)) { result ->
             when (result) {
                 is TdApi.MessageProperties -> synchronized(lock) {
                     _permissions.value = _permissions.value + (
@@ -41,7 +51,13 @@ class TdlibMessageActions(
                         )
                     )
                 }
-                is TdApi.Error -> error(chatId, "Message actions", result.code)
+                is TdApi.Error -> {
+                    synchronized(lock) {
+                        _permissions.value = _permissions.value +
+                            ((chatId to messageId) to MessageActionPermissions())
+                    }
+                    error(chatId, "Message actions", result.code)
+                }
             }
         }
     }
