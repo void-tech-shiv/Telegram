@@ -15,6 +15,15 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Send
+import androidx.compose.material.icons.rounded.AttachFile
+import androidx.compose.material.icons.rounded.StopCircle
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.SystemClock
 import androidx.compose.material.icons.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material.icons.rounded.Download
@@ -105,6 +114,9 @@ fun ConversationScreen(
     onVisibleMessages: (List<Long>) -> Unit,
     onTyping: (Boolean) -> Unit,
     onSend: (String) -> Unit,
+    onAttachment: (android.net.Uri) -> Unit,
+    onVoice: (RecordedVoice) -> Unit,
+    mediaBusy: Boolean,
     onLoadMore: () -> Unit,
     onDismissError: () -> Unit
 ) {
@@ -117,6 +129,45 @@ fun ConversationScreen(
     var playingMedia by remember { mutableStateOf<Triple<String, Boolean, Int>?>(null) }
     var newestSeen by remember(chat.id) { mutableLongStateOf(Long.MIN_VALUE) }
     var draft by rememberSaveable(chat.id) { mutableStateOf("") }
+    val context = LocalContext.current
+    val recorder = remember(chat.id) { GlaciaVoiceRecorder(context.applicationContext) }
+    var recording by remember(chat.id) { mutableStateOf(false) }
+    var recordStartedAt by remember(chat.id) { mutableLongStateOf(0L) }
+    var recordSeconds by remember(chat.id) { mutableIntStateOf(0) }
+    var recordError by remember(chat.id) { mutableStateOf<String?>(null) }
+    val chooseFile = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri -> if (uri != null && !mediaBusy) onAttachment(uri) }
+    fun startRecording() {
+        if (!active || mediaBusy || recording) return
+        recordError = null
+        recording = recorder.start()
+        if (recording) {
+            recordStartedAt = SystemClock.elapsedRealtime()
+        } else {
+            recordError = "Microphone unavailable or recording format unsupported."
+        }
+    }
+    val microphone = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) startRecording()
+        else recordError = "Microphone permission is required to record a voice note."
+    }
+    LaunchedEffect(recording) {
+        while (recording) {
+            recordSeconds = ((SystemClock.elapsedRealtime() - recordStartedAt) / 1000L)
+                .toInt().coerceAtLeast(0)
+            delay(250)
+        }
+    }
+    LaunchedEffect(active) {
+        if (!active && recording) {
+            recorder.discard()
+            recording = false
+        }
+    }
+    DisposableEffect(recorder) { onDispose { recorder.discard() } }
 
     // Report typing at most once every four seconds. Cancel on Send, leaving
     // the chat, or moving the app to background. No drafts are logged or stored.
@@ -567,6 +618,14 @@ fun ConversationScreen(
             }
         }
 
+        if (recordError != null) {
+            Text(
+                recordError!!,
+                color = Color(0xFFFFB0B0),
+                fontSize = 12.sp,
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 3.dp)
+            )
+        }
         Row(
             Modifier.fillMaxWidth()
                 .padding(start = 13.dp, end = 13.dp, top = 6.dp, bottom = 10.dp)
@@ -576,6 +635,32 @@ fun ConversationScreen(
                 .padding(start = 18.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            IconButton(
+                onClick = { chooseFile.launch(arrayOf("*/*")) },
+                enabled = active && !mediaBusy && !recording,
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(Icons.Rounded.AttachFile, "Send photo, video or document", tint = highlight)
+            }
+            Spacer(Modifier.width(5.dp))
+            if (recording) {
+                Text(
+                    "● REC ${recordSeconds}s",
+                    color = Color(0xFFFFA2AE),
+                    fontSize = 13.sp,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = {
+                    recorder.discard()
+                    recording = false
+                }) { Icon(Icons.Rounded.DeleteOutline, "Discard recording", tint = secondary) }
+                IconButton(onClick = {
+                    val recorded = recorder.finish()
+                    recording = false
+                    if (recorded == null) recordError = "Recording too short or unavailable."
+                    else onVoice(recorded)
+                }) { Icon(Icons.Rounded.StopCircle, "Stop and send voice note", tint = highlight) }
+            } else {
             Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                 if (draft.isEmpty()) {
                     Text("Message", color = secondary)
@@ -591,15 +676,27 @@ fun ConversationScreen(
                     keyboardActions = KeyboardActions(onSend = { send() })
                 )
             }
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(6.dp))
+            if (draft.isBlank()) {
+                IconButton(
+                    enabled = active && !mediaBusy,
+                    onClick = {
+                        if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
+                            PackageManager.PERMISSION_GRANTED) {
+                            startRecording()
+                        } else microphone.launch(Manifest.permission.RECORD_AUDIO)
+                    }
+                ) { Icon(Icons.Rounded.Mic, "Record voice note", tint = highlight) }
+            }
             IconButton(
                 onClick = { send() },
-                enabled = draft.isNotBlank(),
+                enabled = draft.isNotBlank() && !mediaBusy,
                 modifier = Modifier.clip(CircleShape)
                     .background(highlight.copy(alpha = 0.17f))
             ) {
                 Icon(Icons.Rounded.Send, contentDescription = "Send Telegram message",
                     tint = if (draft.isNotBlank()) highlight else secondary)
+            }
             }
         }
     }

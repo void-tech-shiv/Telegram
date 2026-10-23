@@ -178,6 +178,12 @@ class TdlibSession(private val context: Context) {
     val documentTransfers = fileStore.transfers
     fun requestDocumentDownload(fileId: Int) = fileStore.requestDocument(fileId)
     private val messaging = TdlibMessages({ client }, fileStore)
+    private val mediaOutbox = MediaOutbox(context, { client }, messaging)
+    val mediaSending = mediaOutbox.busy
+    fun sendAttachment(chatId: Long, uri: android.net.Uri) =
+        mediaOutbox.sendPicked(chatId, uri)
+    fun sendVoice(chatId: Long, path: String, seconds: Int, opus: Boolean) =
+        mediaOutbox.sendRecorded(chatId, path, seconds, opus)
     val messages = messaging.messages
     val historyLoading = messaging.loading
     val messageErrors = messaging.errors

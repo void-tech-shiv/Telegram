@@ -242,6 +242,7 @@ private fun GlaciaApp(
     val loadingChats by session.historyLoading.collectAsState()
     val documentTransfers by session.documentTransfers.collectAsState()
     val messageErrors by session.messageErrors.collectAsState()
+    val mediaBusy by session.mediaSending.collectAsState()
     val outboxRead by session.outboxRead.collectAsState()
     val typingByChat by session.typingActivities.collectAsState()
     val notificationSetup by session.notificationSetup.collectAsState()
@@ -364,6 +365,11 @@ private fun GlaciaApp(
                             session.sendTypingAction(current.id, typing)
                         },
                         onSend = { text -> session.sendText(current.id, text) },
+                        onAttachment = { uri -> session.sendAttachment(current.id, uri) },
+                        onVoice = { voice ->
+                            session.sendVoice(current.id, voice.path, voice.durationSeconds, voice.opus)
+                        },
+                        mediaBusy = mediaBusy,
                         onLoadMore = {
                             val earliestId = messagesByChat[current.id]?.firstOrNull()?.id ?: 0L
                             session.loadHistory(current.id, earliestId)
@@ -795,15 +801,15 @@ private fun SettingsScreen(
             color = mutedInk(dark), fontSize = 12.sp
         )
         Spacer(Modifier.height(24.dp))
-        Text("GLACIA  •  v0.3.7", color = accent(dark),
+        Text("GLACIA  •  v0.3.8", color = accent(dark),
             fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp, fontSize = 11.sp)
         Spacer(Modifier.height(8.dp))
         Text("Experimental Telegram client", color = ink(dark),
             fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
         Spacer(Modifier.height(8.dp))
         Text(
-            "Available: real Telegram chats, text messaging, photos, files, video/audio " +
-                "playback, chat filters, Discover search, read checks, and live typing indicators.",
+            "Available: Telegram messaging, photo/video/file upload, voice-note recording " +
+                "(Android 10+), media playback, chat filters, smart notifications and typing.",
             color = mutedInk(dark), fontSize = 13.sp, lineHeight = 20.sp
         )
         Spacer(Modifier.height(14.dp))
@@ -811,8 +817,9 @@ private fun SettingsScreen(
             fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp, fontSize = 11.sp)
         Spacer(Modifier.height(7.dp))
         Text(
-            "Background push delivery is not available when the app process is stopped. " +
-                "Voice recording, attachment sending and full message search are pending.",
+            "Background push delivery after process termination is not guaranteed. " +
+                "Message reactions, advanced search, upload cleanup and voice compatibility " +
+                "need more device testing.",
             color = mutedInk(dark), fontSize = 13.sp, lineHeight = 20.sp
         )
     }

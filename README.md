@@ -2,11 +2,17 @@
 
 Independent Android Telegram client developed in **Kotlin + Jetpack Compose + TDLib**. Midnight Glass and Frosted Daylight themes, TDLib Telegram session, real chats/messaging, images/documents, Media3 video/voice playback, Discover search, unread filters, read receipts and typing indicators.
 
-## Current developer build: v0.3.7 (Phase 3.6)
+## Current developer build: v0.3.8 (Phase 3.7)
 
-**Branch:** `feature/phase-3-6-smart-notifications` · **Status:** experimental draft, not merged or production certified.
+**Branch:** `feature/phase-3-7-media-compose` · **Status:** experimental draft, not merged or production certified.
 
-### Smart notifications in v0.3.7
+### Media uploads and recording in v0.3.8
+- 📎 Send JPG/PNG/WebP photos, short videos and arbitrary documents via Android system picker and TDLib.
+- 🎤 Record and send OGG/Opus voice notes on Android 10+; Android 8–9 records AAC/M4A, sent as a document.
+- 🔐 App-private outbox, user-initiated microphone permission, capped attachments and no broad storage permission.
+- ⚠️ Voice encoding support and actual delivery need real-device verification; private outbox cleanup is not yet automated.
+
+### Smart notifications from v0.3.7
 - Tap an alert → corresponding chat, including after Activity cold start
 - GLACIA ice-star status / adaptive launcher icon
 - Distinct Android notification child per Telegram conversation plus group summary
@@ -19,7 +25,7 @@ Independent Android Telegram client developed in **Kotlin + Jetpack Compose + TD
 ```powershell
 cd D:\telegram\Telegram
 git fetch origin
-git switch --track origin/feature/phase-3-6-smart-notifications
+git switch --track origin/feature/phase-3-7-media-compose
 .\gradlew.bat :app:assembleDebug :app:testDebugUnitTest
 ```
 
@@ -29,9 +35,9 @@ Firebase is off by default. A Firebase/Telegram-compatible FCM project for `dev.
 
 ### Remaining work
 
-Reliable background push after process death, full attachment sending and voice recording, actual global *message-content* search, reactions/calls and production security audit are still outstanding.
+Reliable background push after process death, upload cleanup, full message-content search, reactions/calls, and production security audit remain outstanding.
 
-See `docs/PHASE3_6.md` for full device QA and privacy notes; Cherrygram is credited below as UI/product inspiration only, without copying GPL-licensed source code.
+See `docs/PHASE3_7.md` for media/device QA, and `docs/PHASE3_6.md` for push limitations; Cherrygram is credited below as UI/product inspiration only, without copying GPL-licensed source code.
 
 ---
 ## Open-source inspiration
