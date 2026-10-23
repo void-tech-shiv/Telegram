@@ -1,5 +1,7 @@
 package dev.glacia.app.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -13,6 +15,7 @@ import androidx.compose.material.icons.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,6 +24,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -223,9 +227,41 @@ internal fun CompactProfileHome(
     paths: Map<Int, String>,
     onEdit: () -> Unit,
     onSettings: () -> Unit,
-    onRefresh: () -> Unit
+    onRefresh: () -> Unit,
+    onSavePhoto: (String) -> Unit
 ) {
     val person = account.self
+    val context = LocalContext.current
+    var photoError by remember { mutableStateOf<String?>(null) }
+    val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        photoError = null
+        var copy: File? = null
+        runCatching {
+            val mime = context.contentResolver.getType(uri)
+            require(mime == "image/png" || mime == "image/jpeg")
+            copy = File.createTempFile("glacia-profile-", if (mime == "image/png") ".png" else ".jpg",
+                context.cacheDir)
+            val source = context.contentResolver.openInputStream(uri) ?: error("Image unavailable")
+            source.use { input ->
+                copy!!.outputStream().use { output ->
+                    val block = ByteArray(8192)
+                    var bytes = 0
+                    while (true) {
+                        val count = input.read(block)
+                        if (count < 0) break
+                        bytes += count
+                        require(bytes <= 5_000_000)
+                        output.write(block, 0, count)
+                    }
+                }
+            }
+            onSavePhoto(copy!!.absolutePath)
+        }.onFailure {
+            copy?.delete()
+            photoError = "Please select a JPEG or PNG smaller than 5 MB."
+        }
+    }
     Column(
         Modifier.fillMaxSize().background(coreSurface(dark))
             .verticalScroll(rememberScrollState())
@@ -256,6 +292,16 @@ internal fun CompactProfileHome(
         Row(horizontalArrangement = Arrangement.spacedBy(9.dp),
             modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.weight(1f).clip(RoundedCornerShape(17.dp))
+                .background(corePanel(dark))
+                .clickable(enabled = person != null && !account.busy) {
+                    pickPhoto.launch("image/*")
+                }
+                .padding(vertical = 15.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.Rounded.PhotoCamera, null, tint = coreGold(dark))
+                Spacer(Modifier.height(5.dp))
+                Text("Set Photo", color = coreFg(dark), fontSize = 12.sp)
+            }
+            Column(Modifier.weight(1f).clip(RoundedCornerShape(17.dp))
                 .background(corePanel(dark)).clickable(onClick = onEdit)
                 .padding(vertical = 15.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(Icons.Rounded.Edit, null, tint = coreGold(dark))
@@ -269,6 +315,10 @@ internal fun CompactProfileHome(
                 Spacer(Modifier.height(5.dp))
                 Text("Settings", color = coreFg(dark), fontSize = 13.sp)
             }
+        }
+        photoError?.let {
+            Spacer(Modifier.height(8.dp))
+            Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
         }
         Spacer(Modifier.height(20.dp))
         CompactMenuGroup(dark) {
