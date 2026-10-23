@@ -33,12 +33,12 @@ internal class NativeCallSetupFailure(val stage: String, cause: Throwable) :
 
 internal class NativeCallMedia(
     private val context: Context,
-    private val onSignaling: (ByteArray) -> Unit,
-    private val onConnection: (String) -> Unit,
-    private val onRemoteFrame: (Frame) -> Unit
+    private val onSignaling: (Int, ByteArray) -> Unit,
+    private val onConnection: (Int, String) -> Unit,
+    private val onRemoteFrame: (Int, Frame) -> Unit
 ) {
     private var native: NTgCalls? = null
-    private var mediaUserId: Long = 0
+    @Volatile private var mediaUserId: Long = 0
     private val webrtcReady = AtomicBoolean(false)
     private val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private var originalMode = AudioManager.MODE_NORMAL
@@ -80,18 +80,20 @@ internal class NativeCallMedia(
         // Always map callback data to the currently active TDLib call in the controller.
         mediaUserId = call.userId
         instance.onSignalingData { id, bytes ->
-            if (id == mediaUserId && bytes != null && bytes.isNotEmpty()) onSignaling(bytes)
+            if (id == call.userId && id == mediaUserId && bytes != null && bytes.isNotEmpty()) {
+                onSignaling(call.id, bytes)
+            }
         }
         instance.onConnectionChange { id, info ->
             if (id == mediaUserId) {
                 val currentState = info.state.name
                 connected = currentState.equals("CONNECTED", ignoreCase = true)
-                onConnection(currentState)
+                onConnection(call.id, currentState)
             }
         }
         instance.onFrames { id, mode, device, frames ->
             if (id == mediaUserId && mode == StreamMode.PLAYBACK && device == StreamDevice.CAMERA) {
-                frames.forEach(onRemoteFrame)
+                frames.forEach { frame -> onRemoteFrame(call.id, frame) }
             }
         }
 
