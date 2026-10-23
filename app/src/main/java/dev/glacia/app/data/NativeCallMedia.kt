@@ -122,8 +122,26 @@ internal class NativeCallMedia(
             instance.setStreamSources(call.userId, StreamMode.PLAYBACK, MediaDescription(null, speaker, remoteVideo, null))
         }
         step("key_exchange") { instance.skipExchange(call.userId, ready.encryptionKey, call.isOutgoing) }
-        val mapped = ready.servers.mapNotNull(::toRtcServer)
-        check(mapped.isNotEmpty()) { "Telegram did not provide usable call servers." }
+        val mapped = step("server_mapping") {
+            ready.servers.mapNotNull(::toRtcServer).also {
+                check(it.isNotEmpty()) { "Telegram did not provide usable call servers." }
+            }
+        }
+        // ready.protocol describes the peer; native match_version() must get
+        // a non-empty intersection. Never silently advertise wrong versions.
+        val commonVersions = step("protocol_match") {
+            NativeCallNegotiation.compatibleVersions(
+                NTgCalls.getProtocol().library_versions,
+                ready.protocol.libraryVersions.toList()
+            ).also { require(it.isNotEmpty()) { "No common Telegram media version" } }
+        }
+        // ntgcalls v3.0 calls JSON::parse on any non-null value.
+        // An empty string is NOT JSON. Passing it caused ice_connect to throw.
+        val customParameters = NativeCallNegotiation.customParametersOrNull(ready.customParameters)
+        Log.i(
+            "GLACIA-VoIP",
+            "ice_inputs servers=${mapped.size} protocol_versions=${commonVersions.size} custom_params=${customParameters != null}"
+        )
         // Set communication mode before starting media, not afterwards.
         step("audio_routing") {
             originalMode = audio.mode
@@ -132,8 +150,8 @@ internal class NativeCallMedia(
         }
         step("ice_connect") {
             instance.connectP2p(
-                call.userId, mapped, ready.protocol.libraryVersions.toList(),
-                ready.allowP2p, ready.customParameters
+                call.userId, mapped, commonVersions,
+                ready.allowP2p, customParameters
             )
         }
         signalingReady = true
