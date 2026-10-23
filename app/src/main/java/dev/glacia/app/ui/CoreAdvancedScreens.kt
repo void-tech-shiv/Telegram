@@ -29,6 +29,25 @@ internal fun CoreChatInfoDialog(
     var name by remember(chat?.id) { mutableStateOf(chat?.title.orEmpty()) }
     var about by remember(chat?.id) { mutableStateOf("") }
     var confirmInvite by remember { mutableStateOf(false) }
+    var confirmBlock by remember { mutableStateOf(false) }
+    if (confirmBlock) {
+        AlertDialog(
+            onDismissRequest = { confirmBlock = false },
+            title = { Text("Block Telegram user?") },
+            text = { Text("This user will no longer be able to message or call you, " +
+                "subject to Telegram privacy rules.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmBlock = false
+                    onBlock?.invoke()
+                    onDismiss()
+                }) { Text("Block") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmBlock = false }) { Text("Cancel") }
+            }
+        )
+    }
     var addingMember by remember { mutableStateOf<dev.glacia.app.data.CorePerson?>(null) }
     addingMember?.let { person ->
         AlertDialog(
@@ -64,7 +83,7 @@ internal fun CoreChatInfoDialog(
                 }
                 TextButton(onClick = onUnread) { Text("Mark conversation unread") }
                 if (chat?.kind == "Private chat") onBlock?.let {
-                    TextButton(onClick = it) {
+                    TextButton(onClick = { confirmBlock = true }) {
                         Text("Block this Telegram user", color = MaterialTheme.colorScheme.error)
                     }
                 }
