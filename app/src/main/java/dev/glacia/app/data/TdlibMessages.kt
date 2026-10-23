@@ -12,7 +12,10 @@ import java.util.Locale
  * Live TDLib messages. Updates are delivered from TDLib threads, so the shared
  * message map is guarded and emitted as immutable snapshots for Compose.
  */
-class TdlibMessages(private val client: () -> Client?) {
+class TdlibMessages(
+    private val client: () -> Client?,
+    private val files: TdlibFileStore
+) {
     private val lock = Any()
     private val snapshots = mutableMapOf<Long, List<Message>>()
     private val loadingChats = mutableSetOf<Long>()
@@ -127,9 +130,15 @@ class TdlibMessages(private val client: () -> Client?) {
                 synchronized(lock) {
                     val list = snapshots[update.chatId] ?: return
                     snapshots[update.chatId] = list.map {
-                        if (it.id == update.messageId)
-                            it.copy(text = displayContent(update.newContent))
-                        else it
+                        if (it.id == update.messageId) {
+                            val thumbnail = thumbnailFor(update.newContent)
+                            files.ensure(thumbnail)
+                            it.copy(
+                                text = displayContent(update.newContent),
+                                mediaType = mediaType(update.newContent),
+                                mediaFileId = thumbnail?.id
+                            )
+                        } else it
                     }
                     _messages.value = snapshots.toMap()
                 }
@@ -140,6 +149,8 @@ class TdlibMessages(private val client: () -> Client?) {
 
     private fun fromTd(message: TdApi.Message): Message {
         val label = displayContent(message.content)
+        val thumbnail = thumbnailFor(message.content)
+        files.ensure(thumbnail)
         val clock = if (message.date > 0)
             DateFormat.getTimeInstance(DateFormat.SHORT, Locale.getDefault())
                 .format(Date(message.date.toLong() * 1000L))
@@ -152,8 +163,27 @@ class TdlibMessages(private val client: () -> Client?) {
             outgoing = message.isOutgoing,
             date = message.date,
             sending = message.sendingState is TdApi.MessageSendingStatePending,
-            failed = message.sendingState is TdApi.MessageSendingStateFailed
+            failed = message.sendingState is TdApi.MessageSendingStateFailed,
+            mediaType = mediaType(message.content),
+            mediaFileId = thumbnail?.id
         )
+    }
+
+    private fun mediaType(content: TdApi.MessageContent?): String? = when (content) {
+        is TdApi.MessagePhoto -> "photo"
+        is TdApi.MessageVideo -> "video"
+        else -> null
+    }
+
+    /** Prefer an economical medium-sized thumbnail, never full-resolution automatic downloads. */
+    private fun thumbnailFor(content: TdApi.MessageContent?): TdApi.File? = when (content) {
+        is TdApi.MessagePhoto -> {
+            val sorted = content.photo?.sizes?.sortedBy { it.width.toLong() * it.height }
+            (sorted?.firstOrNull { maxOf(it.width, it.height) >= 320 }
+                ?: sorted?.lastOrNull())?.photo
+        }
+        is TdApi.MessageVideo -> content.video?.thumbnail?.file
+        else -> null
     }
 
     private fun displayContent(content: TdApi.MessageContent?): String = when (content) {
