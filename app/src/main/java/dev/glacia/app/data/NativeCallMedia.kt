@@ -119,7 +119,11 @@ internal class NativeCallMedia(
             instance.setStreamSources(call.userId, StreamMode.CAPTURE, MediaDescription(mic, null, camera, null))
         }
         step("audio_playback") {
-            instance.setStreamSources(call.userId, StreamMode.PLAYBACK, MediaDescription(null, speaker, remoteVideo, null))
+            // ntgcalls StreamManager.enable_audio_incoming() checks the playback
+            // MICROPHONE slot, not Speaker. Speaker slot only would silently
+            // disable incoming RTP audio after an otherwise successful handshake.
+            // is_microphone=false tells its Android sink to render, not capture.
+            instance.setStreamSources(call.userId, StreamMode.PLAYBACK, MediaDescription(speaker, null, remoteVideo, null))
         }
         step("key_exchange") { instance.skipExchange(call.userId, ready.encryptionKey, call.isOutgoing) }
         val mapped = step("server_mapping") {
