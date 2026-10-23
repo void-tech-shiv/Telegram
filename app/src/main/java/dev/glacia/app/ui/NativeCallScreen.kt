@@ -1,6 +1,12 @@
 package dev.glacia.app.ui
 
 import android.os.SystemClock
+import android.os.Build
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -21,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.CallEnd
+import androidx.compose.material.icons.rounded.BluetoothAudio
 import androidx.compose.material.icons.rounded.Cameraswitch
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MicOff
@@ -40,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Brush
@@ -82,6 +90,7 @@ internal fun NativeCallScreen(
     onHangUp: () -> Unit,
     onMute: () -> Unit,
     onSpeaker: () -> Unit,
+    onBluetooth: () -> Unit,
     onCameraSwitch: () -> Unit
 ) {
     var clock by remember(call.callId) { mutableLongStateOf(SystemClock.elapsedRealtime()) }
@@ -95,6 +104,13 @@ internal fun NativeCallScreen(
     val incoming = !call.outgoing && call.phase == "Incoming"
     val active = call.phase == "Connected"
     val hasVideo = call.video && active
+    val aurora = rememberInfiniteTransition(label = "Call glow")
+    val breathe by aurora.animateFloat(
+        initialValue = .64f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(2400), RepeatMode.Reverse),
+        label = "Voice ambient pulse"
+    )
 
     Dialog(
         onDismissRequest = {},
@@ -154,6 +170,7 @@ internal fun NativeCallScreen(
                 Box(
                     Modifier.align(Alignment.Center)
                         .size(240.dp)
+                        .graphicsLayer { alpha = breathe }
                         .clip(CircleShape)
                         .background(
                             Brush.radialGradient(
@@ -246,16 +263,18 @@ internal fun NativeCallScreen(
                         selected = call.speaker, enabled = active,
                         onClick = onSpeaker
                     ) { Icon(Icons.Rounded.VolumeUp, null) }
+                    GlassCallAction(
+                        label = if (call.bluetooth) "BT on" else "Bluetooth",
+                        selected = call.bluetooth,
+                        enabled = active && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S,
+                        onClick = onBluetooth
+                    ) { Icon(Icons.Rounded.BluetoothAudio, null) }
                     if (call.video) {
                         GlassCallAction(
                             label = "Flip",
                             enabled = active,
                             onClick = onCameraSwitch
                         ) { Icon(Icons.Rounded.Cameraswitch, null) }
-                    } else {
-                        GlassCallAction(label = "Voice", enabled = false, onClick = {}) {
-                            Icon(Icons.Rounded.Call, null)
-                        }
                     }
                 }
                 Spacer(Modifier.height(22.dp))
