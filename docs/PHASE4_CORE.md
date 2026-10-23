@@ -28,7 +28,9 @@ READ_CONTACTS permission** or bulk upload of the phone's address book is used.
 **Chats:** Existing Main/Archived chat lists, pinning, message search, private
 chats, media, replies, notifications and 1:1 voice/video calls are preserved.
 Contacts create/reuse ordinary private chats via TDLib and route through the
-same current conversation UI. No duplicate TDLib database connection.
+same current conversation UI. **Saved Messages** opens the signed-in user's
+own private cloud chat with `CreatePrivateChat(selfId)`. No duplicate TDLib
+database connection.
 
 **Privacy:** Phone/account details are held only in memory and are not logged
 or written to preference files. Stale network callbacks are ignored after
@@ -87,6 +89,8 @@ Expected `versionName=0.3.22`.
   server changes. Empty first name and 70+ char bios rejected locally.
 - [ ] Contacts tab: Telegram cloud contacts load; search by name/username,
   open an existing/new 1:1 conversation, send and receive messages.
+- [ ] Saved Messages opens the real Telegram self-chat and messages appear
+  across GLACIA and the official Telegram client.
 - [ ] Verify **no Android contacts permission prompt** and no phonebook upload.
 - [ ] Offline/no contacts/user without username; errors, progress and empty states.
 - [ ] Settings theme, app notification permission, test notification still work.
