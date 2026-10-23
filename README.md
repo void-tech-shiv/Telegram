@@ -2,7 +2,21 @@
 
 Independent Android Telegram client developed in **Kotlin + Jetpack Compose + TDLib**. Midnight Glass and Frosted Daylight themes, TDLib Telegram session, real chats/messaging, images/documents, Media3 video/voice playback, Discover search, unread filters, read receipts and typing indicators.
 
-## Experimental developer build: v0.3.20 (Phase 3.14 — stickers / GIFs)
+## Experimental hotfix: v0.3.21 (Phase 3.14 — animated sticker rendering)
+
+**Branch:** `fix/phase-3-14-sticker-gif-rendering` · **Status:** draft PR #26, phone QA pending.
+
+- Addresses Android screenshots showing **Unsupported message type**, blank
+  sticker previews, and a GIF Download stuck at 0%. Real WEBP, bounded
+  TGS/Lottie and muted WebM video-sticker playback added to message bubbles.
+- Adds installed Telegram sticker packs to the real picker, with safe
+  on-demand full-pack browsing. Sticker originals aren't bulk downloaded.
+- Allows retrying stuck media downloads without disabling the button forever.
+  Does not promise a successful download when Telegram/network remains offline.
+- Existing two-way voice/video, background calling and reaction bugfix code
+  remain untouched. See `docs/PHASE3_14_RENDERING_FIX.md` for build/QA.
+
+## Previous experimental developer build: v0.3.20 (Phase 3.14 — stickers / GIFs)
 
 **Branch:** `feature/phase-3-14-stickers-gifs` · **Status:** draft, phone QA required.
 
