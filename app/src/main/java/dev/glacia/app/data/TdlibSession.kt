@@ -192,7 +192,7 @@ class TdlibSession(private val context: Context) {
             _chatActionBusy.value = _chatActionBusy.value + chatId
         }
         val target: TdApi.ChatList = if (archive) TdApi.ChatListArchive() else TdApi.ChatListMain()
-        active.send(TdApi.SetChatChatList(chatId, target)) { result ->
+        active.send(TdApi.AddChatToList(chatId, target)) { result ->
             synchronized(chatActionLock) { _chatActionBusy.value = _chatActionBusy.value - chatId }
             if (result is TdApi.Error) {
                 _chatActionError.value = "Archive change failed (Telegram code ${result.code})."
