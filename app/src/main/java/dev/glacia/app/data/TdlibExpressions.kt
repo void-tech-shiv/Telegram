@@ -104,7 +104,7 @@ class TdlibExpressions(
         }
     }
 
-    fun send(chatId: Long, option: ExpressionOption, replyTo: Long? = null) {
+    fun send(chatId: Long, option: ExpressionOption, replyToMessageId: Long? = null) {
         if (chatId == 0L || !ExpressionPolicy.canSend(option)) return
         val active = client() ?: run {
             messages.reportError(chatId, "Telegram connection unavailable.")
@@ -128,8 +128,8 @@ class TdlibExpressions(
         }
         active.send(TdApi.SendMessage().apply {
             this.chatId = chatId
-            if (replyTo != null && replyTo > 0) {
-                replyTo = TdApi.InputMessageReplyToMessage().apply { messageId = replyTo }
+            if (replyToMessageId != null && replyToMessageId > 0) {
+                this.replyTo = TdApi.InputMessageReplyToMessage().apply { messageId = replyToMessageId }
             }
             inputMessageContent = content
         }) { result ->
