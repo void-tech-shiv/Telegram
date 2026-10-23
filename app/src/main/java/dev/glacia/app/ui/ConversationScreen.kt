@@ -32,6 +32,7 @@ import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -53,6 +54,7 @@ import androidx.compose.ui.window.Dialog
 import dev.glacia.app.data.DocumentKind
 import dev.glacia.app.data.FileTransfer
 import dev.glacia.app.data.Chat
+import dev.glacia.app.data.ChatSearchState
 import dev.glacia.app.data.Message
 import dev.glacia.app.data.MessageActionPermissions
 import dev.glacia.app.data.DeliveryReceipts
@@ -129,6 +131,10 @@ fun ConversationScreen(
     onVoice: (RecordedVoice) -> Unit,
     mediaBusy: Boolean,
     onLoadMore: () -> Unit,
+    searchState: ChatSearchState?,
+    onSearchMessages: (String, Boolean) -> Unit,
+    onClearSearch: () -> Unit,
+    onJumpToMessage: (Long) -> Unit,
     onDismissError: () -> Unit
 ) {
     val foreground = if (dark) Color(0xFFF4F7FF) else Color(0xFF17213A)
@@ -141,6 +147,9 @@ fun ConversationScreen(
     var newestSeen by remember(chat.id) { mutableLongStateOf(Long.MIN_VALUE) }
     var draft by rememberSaveable(chat.id) { mutableStateOf("") }
     var selectedMessage by remember(chat.id) { mutableStateOf<Message?>(null) }
+    var showingSearch by rememberSaveable(chat.id) { mutableStateOf(false) }
+    var searchText by rememberSaveable(chat.id) { mutableStateOf("") }
+    var pendingJumpId by remember(chat.id) { mutableStateOf<Long?>(null) }
     var replyingTo by remember(chat.id) { mutableStateOf<Message?>(null) }
     var editing by remember(chat.id) { mutableStateOf<Message?>(null) }
     val context = LocalContext.current
@@ -237,6 +246,22 @@ fun ConversationScreen(
             if (initial || nearBottom) timelineState.scrollToItem(messages.size)
         }
     }
+    LaunchedEffect(showingSearch, searchText) {
+        if (showingSearch) {
+            delay(350)
+            if (searchText.isNotBlank()) onSearchMessages(searchText, false)
+            else onClearSearch()
+        }
+    }
+    LaunchedEffect(messages, pendingJumpId) {
+        val target = pendingJumpId ?: return@LaunchedEffect
+        val index = messages.indexOfFirst { it.id == target }
+        if (index >= 0) {
+            // LazyColumn has one "Load earlier" entry before actual messages.
+            timelineState.animateScrollToItem(index + 1)
+            pendingJumpId = null
+        }
+    }
     fun send() {
         val text = draft.trim()
         if (text.isNotBlank() && text.length <= 4096) {
@@ -249,6 +274,91 @@ fun ConversationScreen(
             draft = ""
             editing = null
             replyingTo = null
+        }
+    }
+    if (showingSearch) {
+        Dialog(onDismissRequest = {
+            showingSearch = false
+            searchText = ""
+            onClearSearch()
+        }) {
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = if (dark) Color(0xFF15203A) else Color.White,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Search messages", color = foreground,
+                            fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        IconButton(onClick = {
+                            showingSearch = false
+                            searchText = ""
+                            onClearSearch()
+                        }) { Icon(Icons.Rounded.Close, "Close search", tint = foreground) }
+                    }
+                    OutlinedTextField(
+                        value = searchText,
+                        onValueChange = { searchText = it.take(256) },
+                        placeholder = { Text("Search this Telegram chat") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    val results = searchState?.takeIf { it.query == searchText.trim() }
+                    if (results?.loading == true) {
+                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                    }
+                    results?.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    Text(
+                        if (results == null && searchText.isNotBlank()) "Search Telegram history"
+                        else "${results?.hits?.size ?: 0} of ${results?.total ?: 0} results",
+                        fontSize = 12.sp, color = secondary
+                    )
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 340.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        items(results?.hits.orEmpty(), key = { it.id }) { hit ->
+                            TextButton(
+                                onClick = {
+                                    pendingJumpId = hit.id
+                                    onJumpToMessage(hit.id)
+                                    showingSearch = false
+                                    searchText = ""
+                                    onClearSearch()
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(Modifier.fillMaxWidth()) {
+                                    Text(
+                                        hit.preview.ifBlank { "Telegram message" },
+                                        color = foreground,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        if (hit.outgoing) "You · Tap to jump"
+                                        else "Tap to jump",
+                                        fontSize = 11.sp,
+                                        color = secondary
+                                    )
+                                }
+                            }
+                        }
+                        if (results != null && !results.loading &&
+                            results.nextFromMessageId > 0L &&
+                            results.hits.size < 200 && results.hits.isNotEmpty()) {
+                            item {
+                                TextButton(
+                                    onClick = { onSearchMessages(searchText, true) },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) { Text("More results") }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
     selectedMessage?.let { message ->
@@ -296,6 +406,16 @@ fun ConversationScreen(
     }
 
     Column(Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 2.dp),
+            horizontalArrangement = Arrangement.End
+        ) {
+            TextButton(onClick = { showingSearch = true }) {
+                Icon(Icons.Rounded.Search, "Search Telegram messages", tint = highlight)
+                Spacer(Modifier.width(6.dp))
+                Text("Search in chat", color = highlight)
+            }
+        }
         // Keep partially scrolled messages clipped beneath the header, not over it.
         Box(Modifier.weight(1f).clipToBounds()) {
             LazyColumn(
