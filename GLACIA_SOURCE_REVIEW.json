@@ -1,0 +1,138 @@
+{
+  "app_id": "dev.glacia.fullclient",
+  "licensing": "GPL-2.0 notices preserved",
+  "source_audit_required": true,
+  "remote_account_data_wipe_entrypoints_disabled": true,
+  "changes": 28,
+  "removed_config": [
+    "TMessagesProj_AppStandalone/google-services.json",
+    "TMessagesProj_AppHuawei/google-services.json",
+    "TMessagesProj_AppHockeyApp/google-services.json",
+    "TMessagesProj_App/google-services.json",
+    "TMessagesProj/google-services.json",
+    "TMessagesProj/src/google-services.json"
+  ],
+  "findings": [
+    {
+      "path": "TMessagesProj/src/main/java/uz/unnarsx/cherrygram/preferences/DonatesPreferencesEntry.java",
+      "line": 468,
+      "pattern": "t\\.me/[Cc]herrygram"
+    },
+    {
+      "path": "TMessagesProj/src/main/java/uz/unnarsx/cherrygram/preferences/DonatesPreferencesEntry.java",
+      "line": 468,
+      "pattern": "[Cc]herrygramSupport"
+    },
+    {
+      "path": "TMessagesProj/src/main/java/uz/unnarsx/cherrygram/preferences/AboutPreferencesEntry.java",
+      "line": 60,
+      "pattern": "[Cc]herrygramSupport"
+    },
+    {
+      "path": "TMessagesProj/src/main/java/uz/unnarsx/cherrygram/preferences/AboutPreferencesEntry.java",
+      "line": 61,
+      "pattern": "[Cc]herrygramSupport"
+    },
+    {
+      "path": "TMessagesProj/src/main/java/uz/unnarsx/cherrygram/preferences/AboutPreferencesEntry.java",
+      "line": 111,
+      "pattern": "[Cc]herrygramSupport"
+    },
+    {
+      "path": "TMessagesProj/src/main/java/uz/unnarsx/cherrygram/preferences/AboutPreferencesEntry.java",
+      "line": 119,
+      "pattern": "[Cc]herrygramSupport"
+    },
+    {
+      "path": "TMessagesProj/src/main/java/uz/unnarsx/cherrygram/preferences/AboutPreferencesEntry.java",
+      "line": 120,
+      "pattern": "[Cc]herrygramSupport"
+    },
+    {
+      "path": "TMessagesProj/src/main/java/uz/unnarsx/cherrygram/preferences/AboutPreferencesEntry.java",
+      "line": 124,
+      "pattern": "[Cc]herrygramSupport"
+    },
+    {
+      "path": "TMessagesProj/src/main/java/uz/unnarsx/cherrygram/preferences/AboutPreferencesEntry.java",
+      "line": 124,
+      "pattern": "[Cc]herrygramSupport"
+    },
+    {
+      "path": "TMessagesProj/src/main/java/uz/unnarsx/cherrygram/preferences/AboutPreferencesEntry.java",
+      "line": 125,
+      "pattern": "[Cc]herrygramSupport"
+    },
+    {
+      "path": "TMessagesProj/src/main/java/uz/unnarsx/cherrygram/misc/Constants.kt",
+      "line": 36,
+      "pattern": "[Cc]herrygramSupport"
+    },
+    {
+      "path": "TMessagesProj/src/main/java/uz/unnarsx/cherrygram/misc/CherrygramExtras.kt",
+      "line": 88,
+      "pattern": "KotlinFragmentsManager\\.nfweioufwehr117"
+    },
+    {
+      "path": "TMessagesProj/src/main/java/uz/unnarsx/cherrygram/misc/CherrygramExtras.kt",
+      "line": 91,
+      "pattern": "KotlinFragmentsManager\\.nfweioufwehr117"
+    },
+    {
+      "path": "TMessagesProj/src/main/java/uz/unnarsx/cherrygram/misc/CherrygramExtras.kt",
+      "line": 106,
+      "pattern": "KotlinFragmentsManager\\.nfweioufwehr117"
+    },
+    {
+      "path": "TMessagesProj/src/main/java/uz/unnarsx/cherrygram/misc/CherrygramExtras.kt",
+      "line": 109,
+      "pattern": "KotlinFragmentsManager\\.nfweioufwehr117"
+    },
+    {
+      "path": "TMessagesProj/src/main/java/uz/unnarsx/cherrygram/misc/CherrygramExtras.kt",
+      "line": 182,
+      "pattern": "KotlinFragmentsManager\\.nfweioufwehr117"
+    },
+    {
+      "path": "TMessagesProj/src/main/java/uz/unnarsx/cherrygram/misc/CherrygramExtras.kt",
+      "line": 185,
+      "pattern": "KotlinFragmentsManager\\.nfweioufwehr117"
+    },
+    {
+      "path": "TMessagesProj/src/main/java/uz/unnarsx/cherrygram/donates/FileIntegrityUtils.kt",
+      "line": 43,
+      "pattern": "DonatesManager\\.startAutoRefresh"
+    },
+    {
+      "path": "TMessagesProj/src/main/java/uz/unnarsx/cherrygram/donates/FileIntegrityUtils.kt",
+      "line": 57,
+      "pattern": "DonatesManager\\.startAutoRefresh"
+    },
+    {
+      "path": "TMessagesProj/src/main/java/uz/unnarsx/cherrygram/donates/FileIntegrityUtils.kt",
+      "line": 72,
+      "pattern": "DonatesManager\\.startAutoRefresh"
+    },
+    {
+      "path": "TMessagesProj/src/main/java/uz/unnarsx/cherrygram/core/configs/CherrygramPrivacyConfig.kt",
+      "line": 56,
+      "pattern": "Extra\\.TG_BLOCKED_URL"
+    },
+    {
+      "path": "TMessagesProj/src/main/java/uz/unnarsx/cherrygram/core/configs/CherrygramCoreConfig.kt",
+      "line": 230,
+      "pattern": "KotlinFragmentsManager\\.nfweioufwehr117"
+    },
+    {
+      "path": "TMessagesProj/src/main/java/uz/unnarsx/cherrygram/core/configs/CherrygramCoreConfig.kt",
+      "line": 239,
+      "pattern": "Extra\\.TG_BLOCKED_URL"
+    },
+    {
+      "path": "TMessagesProj/src/main/java/uz/unnarsx/cherrygram/core/configs/CherrygramChatsConfig.kt",
+      "line": 135,
+      "pattern": "Extra\\.TG_BLOCKED_URL"
+    }
+  ],
+  "finding_count": 24
+}
