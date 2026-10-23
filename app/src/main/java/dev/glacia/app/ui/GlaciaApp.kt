@@ -33,6 +33,7 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -652,10 +653,14 @@ private fun NavigationTab(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     onClick: () -> Unit
 ) {
+    val highlightBackground by animateColorAsState(
+        if (selected) accent(dark).copy(alpha = 0.20f) else Color.Transparent,
+        label = "GLACIA tab highlight"
+    )
     Column(
         modifier = Modifier
             .clip(RoundedCornerShape(22.dp))
-            .background(if (selected) accent(dark).copy(alpha = 0.16f) else Color.Transparent)
+            .background(highlightBackground)
             .clickable(onClick = onClick)
             .padding(horizontal = 18.dp, vertical = 9.dp),
         horizontalAlignment = Alignment.CenterHorizontally
