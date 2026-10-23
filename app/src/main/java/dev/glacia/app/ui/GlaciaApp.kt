@@ -43,6 +43,9 @@ import dev.chrisbanes.haze.rememberHazeState
 import dev.chrisbanes.haze.glass.GlassStyle
 import dev.chrisbanes.haze.glass.hazeGlass
 import dev.glacia.app.data.Chat
+import coil3.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
+import java.io.File
 import dev.glacia.app.data.TdlibSession
 import dev.glacia.app.settings.ThemeChoice
 import dev.glacia.app.settings.ThemePreferences
@@ -61,6 +64,7 @@ fun GlaciaRoot() {
     }
     val auth by session.auth.collectAsState()
     val realChats by session.chats.collectAsState()
+    val photoPaths by session.filePaths.collectAsState()
     GlaciaTheme(theme) { dark ->
         if (auth is TdlibSession.Auth.Ready) {
             GlaciaApp(
@@ -68,6 +72,7 @@ fun GlaciaRoot() {
                 selectedTheme = theme,
                 liveChats = realChats,
                 session = session,
+                photoPaths = photoPaths,
                 onThemeChange = { scope.launch { preferences.setTheme(it) } }
             )
         } else {
@@ -110,6 +115,7 @@ private fun GlaciaApp(
     selectedTheme: ThemeChoice,
     liveChats: List<Chat>,
     session: TdlibSession,
+    photoPaths: Map<Int, String>,
     onThemeChange: (ThemeChoice) -> Unit
 ) {
     val hazeState = rememberHazeState()
@@ -147,7 +153,8 @@ private fun GlaciaApp(
                         IconButton(onClick = { openChatId = null }) {
                             Icon(Icons.Rounded.ArrowBack, "Back", tint = ink(dark))
                         }
-                        Avatar(current.title, current.id, Modifier.size(42.dp))
+                        Avatar(current.title, current.id, Modifier.size(42.dp),
+                            photoPath = current.photoFileId?.let(photoPaths::get))
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(current.title, color = ink(dark), fontWeight = FontWeight.Bold,
@@ -177,6 +184,7 @@ private fun GlaciaApp(
                     ConversationScreen(
                         chat = current,
                         messages = messagesByChat[current.id].orEmpty(),
+                        filePaths = photoPaths,
                         loading = current.id in loadingChats,
                         error = messageErrors[current.id],
                         dark = dark,
@@ -191,6 +199,7 @@ private fun GlaciaApp(
                     when (tab) {
                         "Chats" -> ChatList(
                             chats = liveChats,
+                            photoPaths = photoPaths,
                             query = query,
                             onQuery = { query = it },
                             dark = dark,
@@ -268,6 +277,7 @@ private fun AuroraBackground(dark: Boolean, modifier: Modifier = Modifier) {
 @Composable
 private fun ChatList(
     chats: List<Chat>,
+    photoPaths: Map<Int, String>,
     query: String,
     onQuery: (String) -> Unit,
     dark: Boolean,
@@ -339,7 +349,8 @@ private fun ChatList(
                     .padding(horizontal = 13.dp, vertical = 13.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Avatar(chat.title, chat.id, Modifier.size(52.dp))
+                Avatar(chat.title, chat.id, Modifier.size(52.dp),
+                    photoPath = chat.photoFileId?.let(photoPaths::get))
                 Spacer(Modifier.width(13.dp))
                 Column(Modifier.weight(1f)) {
                     Text(chat.title.ifBlank { "Unnamed chat" }, color = ink(dark),
@@ -375,7 +386,12 @@ private fun ChatList(
 }
 
 @Composable
-private fun Avatar(name: String, id: Long, modifier: Modifier = Modifier) {
+private fun Avatar(
+    name: String,
+    id: Long,
+    modifier: Modifier = Modifier,
+    photoPath: String? = null
+) {
     val tones = listOf(
         listOf(Color(0xFF546FE5), Color(0xFFA18AF5)),
         listOf(Color(0xFF2C93BE), Color(0xFF39B7B5)),
@@ -390,8 +406,17 @@ private fun Avatar(name: String, id: Long, modifier: Modifier = Modifier) {
             .background(Brush.linearGradient(tones[Math.floorMod(id, tones.size)])),
         contentAlignment = Alignment.Center
     ) {
-        Text(initials, color = Color.White, fontWeight = FontWeight.Bold,
-            fontSize = 16.sp, maxLines = 1)
+        if (photoPath != null) {
+            AsyncImage(
+                model = File(photoPath),
+                contentDescription = "$name profile photo",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Text(initials, color = Color.White, fontWeight = FontWeight.Bold,
+                fontSize = 16.sp, maxLines = 1)
+        }
     }
 }
 
