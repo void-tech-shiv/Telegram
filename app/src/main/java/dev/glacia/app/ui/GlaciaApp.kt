@@ -840,25 +840,101 @@ private fun GlaciaApp(
                             onProfile = { tab = "Profile" },
                             onLogout = session::logoutThisDevice
                         )
-                        else -> SettingsScreen(
-                            selectedTheme, dark, onThemeChange,
-                            coreAccount, photoPaths,
-                            session::refreshCoreAccount,
-                            session::updateOwnProfile,
-                            session::updateOwnUsername,
-                            session::updateOwnPhoto,
-                            session::clearAccountNotice,
-                            session::logoutThisDevice,
-                            coreSecurity,
-                            session::refreshCoreSecurity,
-                            session::terminateOtherTelegramSession,
-                            session::unblockTelegramUser,
-                            session::updatePrivacyRule,
-                            notificationPermission, onNotificationPermission,
-                            onTestNotification, onOpenNotificationSettings,
-                            notificationSetup, notificationEvents, notificationHealth,
-                            pushStatus
-                        )
+                        else -> when (settingsPage) {
+                            "Home" -> CompactSettingsHome(
+                                dark = dark,
+                                account = coreAccount,
+                                paths = photoPaths,
+                                onProfile = { tab = "Profile" },
+                                onAccount = { settingsPage = "Account" },
+                                onAppearance = { settingsPage = "Appearance" },
+                                onPrivacy = { settingsPage = "Privacy" },
+                                onNotifications = { settingsPage = "Notifications" },
+                                onFolders = { showFolderManagement = true },
+                                onDevices = { settingsPage = "Devices" },
+                                onAdvanced = { settingsPage = "Advanced" },
+                                onHelp = {
+                                    runCatching { uriHandler.openUri("https://telegram.org/faq") }
+                                }
+                            )
+                            "Appearance" -> CompactAppearancePage(
+                                selected = selectedTheme, dark = dark,
+                                onBack = { settingsPage = "Home" },
+                                onSelect = onThemeChange
+                            )
+                            "Notifications" -> CompactNotificationPage(
+                                dark = dark,
+                                permissionGranted = notificationPermission,
+                                onBack = { settingsPage = "Home" },
+                                onAskPermission = onNotificationPermission,
+                                onAndroidSettings = onOpenNotificationSettings,
+                                onTestNotification = onTestNotification,
+                                pushStatus = pushStatus
+                            )
+                            "Account" -> Column(
+                                Modifier.fillMaxSize().background(coreSurface(dark))
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(horizontal = 15.dp)
+                            ) {
+                                CompactPageHeader("Account", dark) { settingsPage = "Home" }
+                                CoreProfileSection(
+                                    state = coreAccount, filePaths = photoPaths,
+                                    dark = dark,
+                                    onRefresh = session::refreshCoreAccount,
+                                    onSave = session::updateOwnProfile,
+                                    onSaveUsername = session::updateOwnUsername,
+                                    onSavePhoto = session::updateOwnPhoto,
+                                    onDismissNotice = session::clearAccountNotice
+                                )
+                            }
+                            "Privacy", "Devices" -> Column(
+                                Modifier.fillMaxSize().background(coreSurface(dark))
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(horizontal = 15.dp)
+                            ) {
+                                CompactPageHeader(
+                                    if (settingsPage == "Devices") "Devices"
+                                    else "Privacy & Security", dark
+                                ) { settingsPage = "Home" }
+                                CompactMenuGroup(dark) {
+                                    Column(Modifier.padding(15.dp)) {
+                                        CoreSecuritySection(
+                                            state = coreSecurity,
+                                            onRefresh = session::refreshCoreSecurity,
+                                            onTerminate = session::terminateOtherTelegramSession,
+                                            onUnblock = session::unblockTelegramUser,
+                                            onPrivacyChange = session::updatePrivacyRule
+                                        )
+                                    }
+                                }
+                            }
+                            else -> Column(Modifier.fillMaxSize()) {
+                                CompactPageHeader("Advanced settings", dark) {
+                                    settingsPage = "Home"
+                                }
+                                Box(Modifier.weight(1f)) {
+                                    SettingsScreen(
+                                        selectedTheme, dark, onThemeChange,
+                                        coreAccount, photoPaths,
+                                        session::refreshCoreAccount,
+                                        session::updateOwnProfile,
+                                        session::updateOwnUsername,
+                                        session::updateOwnPhoto,
+                                        session::clearAccountNotice,
+                                        session::logoutThisDevice,
+                                        coreSecurity,
+                                        session::refreshCoreSecurity,
+                                        session::terminateOtherTelegramSession,
+                                        session::unblockTelegramUser,
+                                        session::updatePrivacyRule,
+                                        notificationPermission, onNotificationPermission,
+                                        onTestNotification, onOpenNotificationSettings,
+                                        notificationSetup, notificationEvents,
+                                        notificationHealth, pushStatus
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
