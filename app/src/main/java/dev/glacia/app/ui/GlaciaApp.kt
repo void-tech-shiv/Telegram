@@ -27,6 +27,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -189,7 +190,7 @@ private fun GlaciaApp(
                 }
             }
 
-            Box(Modifier.weight(1f)) {
+            Box(Modifier.weight(1f).clipToBounds()) {
                 if (current != null) {
                     ConversationScreen(
                         chat = current,
@@ -313,8 +314,8 @@ private fun ChatList(
         ChatFilters.apply(chats, selectedFilter, query)
     }
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(top = 14.dp, bottom = 12.dp),
+        modifier = Modifier.fillMaxSize().clipToBounds(),
+        contentPadding = PaddingValues(top = 14.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp)
     ) {
         item {
