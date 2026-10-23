@@ -140,12 +140,16 @@ fun ConversationScreen(
         }
     }
 
-    // Adding an older history page should not jump the conversation back to bottom.
+    // Initially show the latest message. Don't yank the list to the bottom
+    // when a new message arrives while the user is reading older history.
     LaunchedEffect(chat.id, messages.lastOrNull()?.id) {
         val newest = messages.lastOrNull()?.id ?: return@LaunchedEffect
         if (newestSeen != newest) {
+            val initial = newestSeen == Long.MIN_VALUE
+            val nearBottom = timelineState.layoutInfo.visibleItemsInfo
+                .lastOrNull()?.index?.let { it >= messages.size - 3 } ?: true
             newestSeen = newest
-            timelineState.scrollToItem(messages.size)
+            if (initial || nearBottom) timelineState.scrollToItem(messages.size)
         }
     }
     fun send() {
