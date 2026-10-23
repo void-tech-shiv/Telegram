@@ -179,6 +179,10 @@ class TdlibSession(private val context: Context) {
     fun requestDocumentDownload(fileId: Int) = fileStore.requestDocument(fileId)
     private val messaging = TdlibMessages({ client }, fileStore)
     private val messageActions = TdlibMessageActions({ client }, messaging)
+    private val calls = TelegramCallHandoff(context, { client }) { id, explanation ->
+        messaging.reportError(id, explanation)
+    }
+    fun openCallContact(chatId: Long) = calls.openContact(chatId)
     val actionPermissions = messageActions.permissions
     fun loadMessageActions(chatId: Long, id: Long) = messageActions.properties(chatId, id)
     fun forwardMessage(fromChatId: Long, id: Long, toChatId: Long) =
