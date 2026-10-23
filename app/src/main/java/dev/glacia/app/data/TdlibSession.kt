@@ -2,6 +2,7 @@ package dev.glacia.app.data
 
 import android.content.Context
 import android.os.Build
+import android.os.SystemClock
 import dev.glacia.app.BuildConfig
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -41,6 +42,12 @@ class TdlibSession(private val context: Context) {
     private var pendingAuthRequest: String? = null
     private val _authBusy = MutableStateFlow(false)
     val authBusy = _authBusy.asStateFlow()
+
+    private val _canResendCode = MutableStateFlow(false)
+    val canResendCode = _canResendCode.asStateFlow()
+    // Monotonic timestamp; no clock/timezone dependency.
+    private val _resendCodeAfterMs = MutableStateFlow(0L)
+    val resendCodeAfterMs = _resendCodeAfterMs.asStateFlow()
 
     private fun publishAuth(state: Auth) {
         synchronized(authorizationLock) {
@@ -113,7 +120,7 @@ class TdlibSession(private val context: Context) {
     private fun request(function: TdApi.Function<*>, stage: String) {
         val expectedAuth: Auth? = when (stage) {
             "Phone login" -> Auth.Phone
-            "Verification code" -> Auth.Code
+            "Verification code", "Resend code" -> Auth.Code
             "Two-step password" -> Auth.Password
             else -> null
         }
@@ -152,6 +159,8 @@ class TdlibSession(private val context: Context) {
                 } else {
                     _notice.value = diagnostic
                 }
+            } else if (stage == "Resend code") {
+                _notice.value = "Telegram accepted the resend request. Enter the newest code."
             }
         }
     }
@@ -210,12 +219,19 @@ class TdlibSession(private val context: Context) {
                 ), "TDLib initialization")
             }
             is TdApi.AuthorizationStateWaitPhoneNumber -> publishAuth(Auth.Phone)
-            is TdApi.AuthorizationStateWaitCode -> publishAuth(Auth.Code)
+            is TdApi.AuthorizationStateWaitCode -> {
+                val info = state.codeInfo
+                _canResendCode.value = info?.nextType != null
+                _resendCodeAfterMs.value = SystemClock.elapsedRealtime() +
+                    (info?.timeout ?: 0).coerceAtLeast(0) * 1000L
+                publishAuth(Auth.Code)
+            }
             is TdApi.AuthorizationStateWaitPassword -> publishAuth(Auth.Password)
             is TdApi.AuthorizationStateWaitEmailAddress -> publishAuth(Auth.EmailAddress)
             is TdApi.AuthorizationStateWaitEmailCode -> publishAuth(Auth.EmailCode)
             is TdApi.AuthorizationStateWaitRegistration -> publishAuth(Auth.RegistrationRequired)
             is TdApi.AuthorizationStateReady -> {
+                _canResendCode.value = false
                 publishAuth(Auth.Ready)
                 request(TdApi.LoadChats(TdApi.ChatListMain(), 100), "Chat sync")
             }
@@ -301,6 +317,13 @@ class TdlibSession(private val context: Context) {
         request(TdApi.SetAuthenticationPhoneNumber(phone, null), "Phone login")
     }
     fun submitCode(code: String) = request(TdApi.CheckAuthenticationCode(code), "Verification code")
+
+    fun resendCode() {
+        if (_auth.value != Auth.Code || !_canResendCode.value) return
+        if (SystemClock.elapsedRealtime() < _resendCodeAfterMs.value) return
+        request(TdApi.ResendAuthenticationCode(), "Resend code")
+    }
+
     fun submitPassword(password: String) = request(TdApi.CheckAuthenticationPassword(password), "Two-step password")
 
     fun close() {
