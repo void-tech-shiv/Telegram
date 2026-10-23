@@ -44,6 +44,42 @@ import androidx.compose.ui.layout.ContentScale
 import java.io.File
 
 /**
+ * A consistent Liquid Glass preview for both Telegram photos and images sent as files.
+ * The blurred background fills portrait-image gutters while ContentScale.Fit preserves
+ * the entire photo instead of cropping it.
+ */
+@Composable
+private fun GlassImagePreview(
+    path: String,
+    description: String,
+    modifier: Modifier = Modifier,
+    onOpen: (() -> Unit)? = null
+) {
+    val rounded = RoundedCornerShape(16.dp)
+    Box(
+        modifier
+            .fillMaxWidth()
+            .height(194.dp)
+            .clip(rounded)
+            .then(if (onOpen != null) Modifier.clickable(onClick = onOpen) else Modifier)
+    ) {
+        AsyncImage(
+            model = File(path),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize().blur(20.dp)
+        )
+        Box(Modifier.fillMaxSize().background(Color(0x550B1433)))
+        AsyncImage(
+            model = File(path),
+            contentDescription = description,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.fillMaxSize()
+        )
+    }
+}
+
+/**
  * Live chat UI. Initial history, older pages and incoming messages come from TDLib.
  * Plain text can be sent; attachments are shown as descriptive placeholders only.
  */
@@ -102,7 +138,7 @@ fun ConversationScreen(
                     }
                     AsyncImage(
                         model = File(imagePath),
-                        contentDescription = "Downloaded document image",
+                        contentDescription = "Image preview",
                         contentScale = ContentScale.Fit,
                         modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 540.dp)
                     )
@@ -168,39 +204,32 @@ fun ConversationScreen(
                         ) {
                             val thumbnailPath = msg.mediaFileId?.let(filePaths::get)
                             if (thumbnailPath != null && isVisual) {
-                                Box(
-                                    Modifier.fillMaxWidth()
-                                        .height(if (msg.mediaType == "video") 155.dp else 175.dp)
-                                        .clip(RoundedCornerShape(16.dp))
-                                ) {
-                                    AsyncImage(
-                                        model = File(thumbnailPath),
-                                        contentDescription = "${msg.mediaType} thumbnail preview",
-                                        contentScale = if (msg.mediaType == "photo")
-                                            ContentScale.Fit else ContentScale.Crop,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                    if (msg.mediaType == "video") {
-                                        Row(
-                                            Modifier.align(Alignment.BottomStart)
-                                                .padding(8.dp)
-                                                .clip(RoundedCornerShape(12.dp))
-                                                .background(Color(0xD916223C))
-                                                .padding(horizontal = 9.dp, vertical = 5.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(
-                                                Icons.Rounded.Videocam,
-                                                contentDescription = null,
-                                                tint = Color.White,
-                                                modifier = Modifier.size(15.dp)
-                                            )
-                                            Spacer(Modifier.width(4.dp))
-                                            Text("Preview only", color = Color.White, fontSize = 10.sp)
-                                        }
+                                GlassImagePreview(
+                                    path = thumbnailPath,
+                                    description = "${msg.mediaType} preview",
+                                    onOpen = if (msg.mediaType == "photo") {
+                                        { imageViewer = thumbnailPath }
+                                    } else null
+                                )
+                                if (msg.mediaType == "video") {
+                                    Row(
+                                        Modifier.padding(top = 7.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(Color(0x6616223C))
+                                            .padding(horizontal = 9.dp, vertical = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            Icons.Rounded.Videocam,
+                                            contentDescription = null,
+                                            tint = foreground,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                        Spacer(Modifier.width(4.dp))
+                                        Text("Video preview only", color = foreground, fontSize = 10.sp)
                                     }
                                 }
-                                Spacer(Modifier.height(9.dp))
+                                Spacer(Modifier.height(7.dp))
                             } else if (isVisual) {
                                 Text(
                                     "Preview unavailable",
@@ -218,35 +247,13 @@ fun ConversationScreen(
                                 )
                                 val imagePath = if (isImage) thumbnailPath ?: downloadedPath else null
                                 if (imagePath != null) {
-                                    // Glass-like blurred fill behind portrait images prevents
-                                    // blank side gutters while keeping the full image uncropped.
-                                    Box(
-                                        Modifier.fillMaxWidth()
-                                            .height(194.dp)
-                                            .clip(RoundedCornerShape(16.dp))
-                                            .then(
-                                                if (downloadedPath != null) Modifier.clickable {
-                                                    imageViewer = downloadedPath
-                                                } else Modifier
-                                            )
-                                    ) {
-                                        AsyncImage(
-                                            model = File(imagePath),
-                                            contentDescription = null,
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier.fillMaxSize().blur(20.dp)
-                                        )
-                                        Box(
-                                            Modifier.fillMaxSize()
-                                                .background(Color(0x550B1433))
-                                        )
-                                        AsyncImage(
-                                            model = File(imagePath),
-                                            contentDescription = "Image attachment preview",
-                                            contentScale = ContentScale.Fit,
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-                                    }
+                                    GlassImagePreview(
+                                        path = imagePath,
+                                        description = "Image attachment preview",
+                                        onOpen = if (downloadedPath != null) {
+                                            { imageViewer = downloadedPath }
+                                        } else null
+                                    )
                                     Spacer(Modifier.height(8.dp))
                                 }
                                 Row(
