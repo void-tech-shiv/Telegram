@@ -273,6 +273,8 @@ private fun GlaciaApp(
             onDismiss = { showChatInfo = false },
             onRename = { session.renameCommunity(id, it) },
             onDescription = { session.describeCommunity(id, it) },
+            contacts = coreAccount.contacts,
+            onAddMember = { userId -> session.addCommunityMember(id, userId) },
             onInvite = { session.generateChatInvite(id) },
             onUnread = { session.markTelegramChatUnread(id, true) },
             onJumpPinned = { messageId ->
