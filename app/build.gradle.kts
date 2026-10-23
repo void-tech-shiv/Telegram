@@ -5,6 +5,10 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// Firebase is completely optional for local builds and public CI.
+// Add app/google-services.json locally to activate the push transport.
+if (file("google-services.json").isFile) apply(plugin = "com.google.gms.google-services")
+
 val privateProps = Properties().apply {
     val file = rootProject.file("local.properties")
     if (file.isFile) file.inputStream().use { load(it) }
@@ -20,9 +24,10 @@ android {
         applicationId = "dev.glacia.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 12
-        versionName = "0.3.6.3"
+        versionCode = 13
+        versionName = "0.3.7"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("boolean", "FCM_CONFIGURED", "${file("google-services.json").isFile}")
         buildConfigField("int", "TELEGRAM_API_ID", "$telegramApiId")
         buildConfigField("String", "TELEGRAM_API_HASH", "\"$telegramApiHash\"")
     }
@@ -63,6 +68,8 @@ dependencies {
     implementation("dev.chrisbanes.haze:haze-glass:2.0.1")
     implementation("io.github.tdlib-android:core:0.1.1")
     implementation("io.coil-kt.coil3:coil-compose:3.6.3")
+    implementation(platform("com.google.firebase:firebase-bom:35.0.2"))
+    implementation("com.google.firebase:firebase-messaging")
     implementation("androidx.media3:media3-exoplayer:1.11.1")
     implementation("androidx.media3:media3-ui:1.11.1")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
