@@ -11,9 +11,10 @@ Independent Android Telegram client developed in **Kotlin + Jetpack Compose + TD
   full-screen Liquid Glass overlay, remote video background, mirrored local
   video preview, camera flip, and a monotonic call timer.
 - Mute/speaker/answer/hangup remain wired to real TDLib/NTgCalls calls.
-- **New camera preview and flip still need real-device QA.** Bluetooth route
-  selection, background/ongoing-call service and native dependency review
-  are not implemented/certified.
+- **New camera preview and flip still need real-device QA.** An optional
+  Android 12+ Bluetooth route button now selects already-connected headsets,
+  requesting permission only when tapped; device QA is still required.
+  Background/ongoing-call service and native dependency review remain open.
 - See `docs/PHASE3_10.md` for exact Windows Git/build/install instructions
   and the full two-account device test matrix.
 
