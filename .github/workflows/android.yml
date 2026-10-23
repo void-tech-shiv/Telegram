@@ -28,6 +28,8 @@ jobs:
         run: sdkmanager --channel=3 "platforms;android-37.0" "build-tools;36.0.0"
       - name: Compile demo and run JVM tests
         run: gradle --no-daemon :app:assembleDebug :app:testDebugUnitTest
+      - name: Verify experimental debug-call opt-in compiles
+        run: gradle --no-daemon :app:compileDebugKotlin "-Pglacia.experimentalNativeCalls=true"
       - name: Diagnose native Java binding on compile failure
         if: failure()
         shell: bash
