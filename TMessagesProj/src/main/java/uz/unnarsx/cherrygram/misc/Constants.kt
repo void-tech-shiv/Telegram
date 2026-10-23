@@ -14,31 +14,31 @@ import uz.unnarsx.cherrygram.core.configs.CherrygramCoreConfig
 object Constants {
 
     @JvmField
-    var CG_AUTHOR = "Updates: @CherrygramAPKs"
+    var CG_AUTHOR = "GLACIA"
 
     /** CG Links start */
     @JvmField
-    var CG_CHANNEL_USERNAME = "cherrygram"
+    var CG_CHANNEL_USERNAME = ""
     @JvmField
     var CG_CHANNEL_URL = "https://telegram.org/faq"
 
     @JvmField
-    var CG_APKS_CHANNEL_USERNAME = "CherrygramAPKs"
+    var CG_APKS_CHANNEL_USERNAME = ""
     @JvmField
     var CG_APKS_CHANNEL_URL = "https://telegram.org/faq"
 
     @JvmField
-    var CG_BETA_APKS_CHANNEL_USERNAME = "CherrygramBetaAPKs"
+    var CG_BETA_APKS_CHANNEL_USERNAME = ""
     @JvmField
     var CG_BETA_APKS_CHANNEL_URL = "https://telegram.org/faq"
 
     @JvmField
-    var CG_CHAT_USERNAME = "CherrygramSupport"
+    var CG_CHAT_USERNAME = ""
     @JvmField
     var CG_CHAT_URL = "https://telegram.org/faq"
 
     @JvmField
-    var CG_OFFTOPIC_CHAT_USERNAME = "CherrygramOfftopic"
+    var CG_OFFTOPIC_CHAT_USERNAME = ""
 
     @JvmField
     var UPDATE_APP_URL = if (CherrygramCoreConfig.isPlayStoreBuild()) "https://telegram.org/faq" else CG_CHANNEL_URL
@@ -54,15 +54,15 @@ object Constants {
     var CG_GITHUB_URL = "https://github.com/void-tech-shiv/Telegram"
     /** CG Links finish */
 
-    const val PACKAGE_NAME = "uz.unnarsx.cherrygram"
+    const val PACKAGE_NAME = "dev.glacia.fullclient"
 
     /** CG Chats IDs start */
-    const val Cherrygram_Owner = 282287840L // Cherrygram Owner (Arslan)
-    const val Cherrygram_Channel = 1776033848L // Cherrygram Channel
-    const val Cherrygram_Support = 1554776538L // Cherrygram Support Group
-    const val Cherrygram_APKs = 1557718915L // Cherrygram APKs
-    const val Cherrygram_Beta = 1544768810L // Cherrygram Beta APKs
-    const val Cherrygram_Archive = 1719103382L // Cherrygram Archive
+    const val Cherrygram_Owner = 0L // Cherrygram Owner (Arslan)
+    const val Cherrygram_Channel = 0L // Cherrygram Channel
+    const val Cherrygram_Support = 0L // Cherrygram Support Group
+    const val Cherrygram_APKs = 0L // Cherrygram APKs
+    const val Cherrygram_Beta = 0L // Cherrygram Beta APKs
+    const val Cherrygram_Archive = 0L // Cherrygram Archive
     /** CG Chats IDs finish */
 
     /** OWNer's friends start */
@@ -72,13 +72,13 @@ object Constants {
     /** OWNer's friends finish */
 
     /** Misc start */
-    const val CHERRY_EMOJI_ID = 5220045200780458122L // Cherrygram logo
-    const val CHERRY_EMOJI_ID_BRA = 5222458839256825177L // Cherrygram logo (bra)
-    const val CHERRY_EMOJI_ID_VERIFIED = 5449476181864779205L // Cherrygram Verified adaptive logo
-    const val CHERRY_EMOJI_ID_VERIFIED_BRA = 5451850156318181341L // Cherrygram Verified Bra adaptive logo
-    const val CHERRY_EMOJI_ID_DONATE = 5411229175971322671L // Cherry emoji with eyeglasses
-    const val CHERRY_EMOJI_ID_PREMIUM = 5393391313502609448L // Cherry emoji with stars
-    const val CHERRY_EMOJI_ID_PREMIUM_MOON = 5370777017904011118L // Evil moon emoji
+    const val CHERRY_EMOJI_ID = 0L // Cherrygram logo
+    const val CHERRY_EMOJI_ID_BRA = 0L // Cherrygram logo (bra)
+    const val CHERRY_EMOJI_ID_VERIFIED = 0L // Cherrygram Verified adaptive logo
+    const val CHERRY_EMOJI_ID_VERIFIED_BRA = 0L // Cherrygram Verified Bra adaptive logo
+    const val CHERRY_EMOJI_ID_DONATE = 0L // Cherry emoji with eyeglasses
+    const val CHERRY_EMOJI_ID_PREMIUM = 0L // Cherry emoji with stars
+    const val CHERRY_EMOJI_ID_PREMIUM_MOON = 0L // Evil moon emoji
     const val PROFILE_BACKGROUND_COLOR_ID_GREEN_BLUE = 12 // Blue-Green gradient
     const val PROFILE_BACKGROUND_COLOR_ID_RED = 14 // Red-Pink gradient
     const val REPLY_BACKGROUND_COLOR_ID = 13 // Red-Pink gradient
