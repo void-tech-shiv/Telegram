@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Fullscreen
+import androidx.compose.material.icons.rounded.FullscreenExit
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.*
@@ -19,10 +21,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -74,6 +78,7 @@ fun GlaciaPlaybackDialog(
             player.release()
         }
     }
+    var expanded by remember(path) { mutableStateOf(false) }
     var playing by remember(player) { mutableStateOf(true) }
     var currentMs by remember(player) { mutableLongStateOf(0L) }
     var durationMs by remember(player) { mutableLongStateOf((fallbackSeconds * 1000L).coerceAtLeast(0L)) }
@@ -94,14 +99,24 @@ fun GlaciaPlaybackDialog(
 
     val surface = if (dark) Color(0xFF1C2949) else Color(0xFFF6F9FF)
     val ink = if (dark) Color(0xFFF3F6FF) else Color(0xFF1B2540)
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = !expanded)
+    ) {
         Surface(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = if (expanded) Modifier.fillMaxSize() else Modifier.fillMaxWidth(),
             color = surface,
-            shape = RoundedCornerShape(24.dp),
+            shape = RoundedCornerShape(if (expanded) 0.dp else 24.dp),
             tonalElevation = 4.dp
         ) {
-            Column(Modifier.padding(15.dp)) {
+            Column(
+                if (expanded) {
+                    Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)
+                        .padding(10.dp)
+                } else {
+                    Modifier.padding(15.dp)
+                }
+            ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         if (isVideo) "GLACIA video" else "GLACIA voice / audio",
@@ -109,6 +124,16 @@ fun GlaciaPlaybackDialog(
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.weight(1f)
                     )
+                    if (isVideo) {
+                        IconButton(onClick = { expanded = !expanded }) {
+                            Icon(
+                                if (expanded) Icons.Rounded.FullscreenExit
+                                else Icons.Rounded.Fullscreen,
+                                contentDescription = if (expanded) "Exit fullscreen" else "Fullscreen video",
+                                tint = ink
+                            )
+                        }
+                    }
                     IconButton(onClick = onDismiss) {
                         Icon(Icons.Rounded.Close, "Close player", tint = ink)
                     }
@@ -119,13 +144,17 @@ fun GlaciaPlaybackDialog(
                             PlayerView(viewContext).apply {
                                 this.player = player
                                 useController = true
+                                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                controllerShowTimeoutMs = 4000
                                 setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
                             }
                         },
                         update = { it.player = player },
-                        modifier = Modifier.fillMaxWidth()
-                            .height(285.dp)
-                            .background(Color.Black)
+                        modifier = if (expanded) {
+                            Modifier.fillMaxWidth().weight(1f).background(Color.Black)
+                        } else {
+                            Modifier.fillMaxWidth().height(285.dp).background(Color.Black)
+                        }
                     )
                 } else {
                     Spacer(Modifier.height(8.dp))

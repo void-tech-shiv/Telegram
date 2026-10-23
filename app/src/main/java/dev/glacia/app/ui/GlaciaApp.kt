@@ -2,6 +2,8 @@ package dev.glacia.app.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -43,6 +45,8 @@ import dev.chrisbanes.haze.rememberHazeState
 import dev.chrisbanes.haze.glass.GlassStyle
 import dev.chrisbanes.haze.glass.hazeGlass
 import dev.glacia.app.data.Chat
+import dev.glacia.app.data.ChatFilter
+import dev.glacia.app.data.ChatFilters
 import coil3.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
 import java.io.File
@@ -122,7 +126,12 @@ private fun GlaciaApp(
     var tab by rememberSaveable { mutableStateOf("Chats") }
     var openChatId by rememberSaveable { mutableStateOf<Long?>(null) }
     var query by rememberSaveable { mutableStateOf("") }
-    val current = liveChats.firstOrNull { it.id == openChatId }
+    var discoverQuery by rememberSaveable { mutableStateOf("") }
+    var chatFilter by rememberSaveable { mutableStateOf(ChatFilter.ALL) }
+    val discovered by session.discoveryResults.collectAsState()
+    val discovering by session.discoveryLoading.collectAsState()
+    val discoveryError by session.discoveryError.collectAsState()
+    val current = (liveChats + discovered).firstOrNull { it.id == openChatId }
     val messagesByChat by session.messages.collectAsState()
     val loadingChats by session.historyLoading.collectAsState()
     val documentTransfers by session.documentTransfers.collectAsState()
@@ -205,10 +214,22 @@ private fun GlaciaApp(
                             photoPaths = photoPaths,
                             query = query,
                             onQuery = { query = it },
+                            selectedFilter = chatFilter,
+                            onFilter = { chatFilter = it },
                             dark = dark,
                             onOpen = { openChatId = it.id }
                         )
-                        "Discover" -> DiscoverScreen(dark)
+                        "Discover" -> TelegramDiscoverScreen(
+                            dark = dark,
+                            photoPaths = photoPaths,
+                            matches = discovered,
+                            loading = discovering,
+                            error = discoveryError,
+                            query = discoverQuery,
+                            onQueryChange = { discoverQuery = it },
+                            onSearch = { session.searchTelegramChats(it) },
+                            onOpen = { openChatId = it.id }
+                        )
                         else -> SettingsScreen(selectedTheme, dark, onThemeChange)
                     }
                 }
@@ -283,14 +304,13 @@ private fun ChatList(
     photoPaths: Map<Int, String>,
     query: String,
     onQuery: (String) -> Unit,
+    selectedFilter: ChatFilter,
+    onFilter: (ChatFilter) -> Unit,
     dark: Boolean,
     onOpen: (Chat) -> Unit
 ) {
-    val filtered = remember(chats, query) {
-        chats.filter {
-            it.title.contains(query, ignoreCase = true) ||
-                it.preview.contains(query, ignoreCase = true)
-        }
+    val filtered = remember(chats, query, selectedFilter) {
+        ChatFilters.apply(chats, selectedFilter, query)
     }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -333,7 +353,20 @@ private fun ChatList(
                             Modifier.clickable { onQuery("") }, tint = mutedInk(dark))
                     }
                 }
-                Spacer(Modifier.height(17.dp))
+                Spacer(Modifier.height(14.dp))
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    ChatFilter.entries.forEach { option ->
+                        FilterChip(
+                            selected = selectedFilter == option,
+                            onClick = { onFilter(option) },
+                            label = { Text(option.label) }
+                        )
+                    }
+                }
+                Spacer(Modifier.height(11.dp))
                 Text("CHATS  •  LIVE", fontSize = 11.sp,
                     fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp,
                     color = accent(dark))
@@ -379,8 +412,9 @@ private fun ChatList(
         }
         if (filtered.isEmpty()) {
             item {
-                Text(if (query.isBlank()) "Your Telegram chat list is empty."
-                     else "No matching conversations.",
+                Text(if (query.isBlank() && selectedFilter == ChatFilter.ALL)
+                         "Your Telegram chat list is empty."
+                     else "No conversations match this filter.",
                     color = mutedInk(dark),
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 28.dp))
             }

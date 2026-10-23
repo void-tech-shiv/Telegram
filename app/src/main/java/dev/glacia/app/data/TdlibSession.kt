@@ -66,6 +66,12 @@ class TdlibSession(private val context: Context) {
     private val missingTitleRefreshes = mutableSetOf<Long>()
     private var client: Client? = null
     private val fileStore = TdlibFileStore { client }
+    private val discovery = TdlibDiscovery({ client }, fileStore)
+    val discoveryResults = discovery.results
+    val discoveryLoading = discovery.loading
+    val discoveryError = discovery.error
+    fun searchTelegramChats(query: String) = discovery.search(query)
+
     val filePaths = fileStore.paths
     val documentTransfers = fileStore.transfers
     fun requestDocumentDownload(fileId: Int) = fileStore.requestDocument(fileId)
@@ -237,6 +243,7 @@ class TdlibSession(private val context: Context) {
             }
             is TdApi.AuthorizationStateClosed -> {
                 messaging.clear()
+                discovery.clear()
                 fileStore.clear()
                 synchronized(known) {
                     known.clear()
