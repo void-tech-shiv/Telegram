@@ -133,14 +133,14 @@ internal fun CompactContactsHome(
                 Spacer(Modifier.height(12.dp))
                 CompactMenuGroup(dark) {
                     CompactMenuRow("📨", "Invite Friends",
-                        "Share an invitation to Telegram", dark) {
+                        "Share an invitation to Telegram", dark, onClick = {
                         val share = Intent(Intent.ACTION_SEND).apply {
                             type = "text/plain"
                             putExtra(Intent.EXTRA_TEXT,
                                 "Chat with me on Telegram: https://telegram.org/")
                         }
                         context.startActivity(Intent.createChooser(share, "Invite friends"))
-                    }
+                    })
                     HorizontalDivider(color = coreSurface(dark), thickness = 0.5.dp)
                     CompactMenuRow("🔖", "Saved Messages",
                         "Your private cloud conversation", dark, onSaved)
