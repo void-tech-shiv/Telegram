@@ -31,6 +31,7 @@ import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.NotificationsActive
+import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.animateColorAsState
@@ -234,6 +235,28 @@ private fun GlaciaApp(
     }
     val current = (liveChats + discovered + listOfNotNull(notificationTarget))
         .firstOrNull { it.id == openChatId }
+    var callHandoffPrompt by remember(current?.id) { mutableStateOf(false) }
+    if (callHandoffPrompt && current != null) {
+        AlertDialog(
+            onDismissRequest = { callHandoffPrompt = false },
+            title = { Text("Voice / video call") },
+            text = {
+                Text(
+                    "GLACIA doesn't have native in-app calling yet. Open this contact's " +
+                        "profile in the official Telegram app, then start a call there?"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    callHandoffPrompt = false
+                    session.openCallContact(current.id)
+                }) { Text("Open Telegram") }
+            },
+            dismissButton = {
+                TextButton(onClick = { callHandoffPrompt = false }) { Text("Cancel") }
+            }
+        )
+    }
     DisposableEffect(session, current?.id) {
         session.setVisibleChat(current?.id)
         onDispose { session.setVisibleChat(null) }
@@ -243,6 +266,7 @@ private fun GlaciaApp(
     val documentTransfers by session.documentTransfers.collectAsState()
     val messageErrors by session.messageErrors.collectAsState()
     val mediaBusy by session.mediaSending.collectAsState()
+    val actionPermissions by session.actionPermissions.collectAsState()
     val outboxRead by session.outboxRead.collectAsState()
     val typingByChat by session.typingActivities.collectAsState()
     val notificationSetup by session.notificationSetup.collectAsState()
@@ -314,6 +338,15 @@ private fun GlaciaApp(
                                 fontSize = 11.sp
                             )
                         }
+                        if (!current.isGroup) {
+                            IconButton(onClick = { callHandoffPrompt = true }) {
+                                Icon(
+                                    Icons.Rounded.Call,
+                                    "Open contact in Telegram for voice/video call",
+                                    tint = accent(dark)
+                                )
+                            }
+                        }
                         val muted = chatMuteStates[current.id] == true
                         IconButton(
                             onClick = { session.setChatMuted(current.id, !muted) }
@@ -364,7 +397,22 @@ private fun GlaciaApp(
                         onTyping = { typing ->
                             session.sendTypingAction(current.id, typing)
                         },
-                        onSend = { text -> session.sendText(current.id, text) },
+                        onSend = { text, replyId -> session.sendText(current.id, text, replyId) },
+                        onEditMessage = { id, text -> session.editMessage(current.id, id, text) },
+                        onDeleteMessage = { id, everyone ->
+                            session.deleteMessage(current.id, id, everyone)
+                        },
+                        onReactToMessage = { id, emoji, chosen ->
+                            session.reactToMessage(current.id, id, emoji, chosen)
+                        },
+                        onForwardMessage = { id, toChat ->
+                            session.forwardMessage(current.id, id, toChat)
+                        },
+                        onLoadMessageProperties = { id ->
+                            session.loadMessageActions(current.id, id)
+                        },
+                        messageActionPermissions = actionPermissions,
+                        forwardTargets = liveChats,
                         onAttachment = { uri -> session.sendAttachment(current.id, uri) },
                         onVoice = { voice ->
                             session.sendVoice(current.id, voice.path, voice.durationSeconds, voice.opus)
@@ -801,15 +849,15 @@ private fun SettingsScreen(
             color = mutedInk(dark), fontSize = 12.sp
         )
         Spacer(Modifier.height(24.dp))
-        Text("GLACIA  •  v0.3.8", color = accent(dark),
+        Text("GLACIA  •  v0.3.9", color = accent(dark),
             fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp, fontSize = 11.sp)
         Spacer(Modifier.height(8.dp))
         Text("Experimental Telegram client", color = ink(dark),
             fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
         Spacer(Modifier.height(8.dp))
         Text(
-            "Available: Telegram messaging, photo/video/file upload, voice-note recording " +
-                "(Android 10+), media playback, chat filters, smart notifications and typing.",
+            "Available: text and media messaging, OGG voice notes, message reply/edit/delete/" +
+                "forward/reactions, read receipts, search, notifications and typing indicators.",
             color = mutedInk(dark), fontSize = 13.sp, lineHeight = 20.sp
         )
         Spacer(Modifier.height(14.dp))
@@ -817,9 +865,9 @@ private fun SettingsScreen(
             fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp, fontSize = 11.sp)
         Spacer(Modifier.height(7.dp))
         Text(
-            "Background push delivery after process termination is not guaranteed. " +
-                "Message reactions, advanced search, upload cleanup and voice compatibility " +
-                "need more device testing.",
+            "Full in-app voice/video calling is not yet available (call button opens contact " +
+                "in official Telegram). Background push after force-stop, advanced search, " +
+                "and media upload cleanup still need work.",
             color = mutedInk(dark), fontSize = 13.sp, lineHeight = 20.sp
         )
     }
