@@ -51,6 +51,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -219,6 +220,10 @@ private fun GlaciaApp(
 ) {
     val hazeState = rememberHazeState()
     val coreScope = rememberCoroutineScope()
+    val uriHandler = LocalUriHandler.current
+    var settingsPage by rememberSaveable { mutableStateOf("Home") }
+    var profileEditing by rememberSaveable { mutableStateOf(false) }
+    var hubSearching by rememberSaveable { mutableStateOf(false) }
     var tab by rememberSaveable { mutableStateOf("Chats") }
     var openChatId by rememberSaveable { mutableStateOf<Long?>(null) }
     var query by rememberSaveable { mutableStateOf("") }
@@ -288,6 +293,10 @@ private fun GlaciaApp(
     LaunchedEffect(tab) {
         if (tab == "Contacts" || tab == "Settings" || tab == "Profile")
             session.refreshCoreAccount()
+    }
+    LaunchedEffect(tab, settingsPage) {
+        if (tab == "Settings" && settingsPage in setOf("Privacy", "Devices"))
+            session.refreshCoreSecurity()
     }
     LaunchedEffect(notificationChatId, notificationTarget?.id, liveChats) {
         val id = notificationChatId ?: return@LaunchedEffect
@@ -518,6 +527,15 @@ private fun GlaciaApp(
     }
 
     BackHandler(enabled = current != null) { openChatId = null }
+    BackHandler(enabled = current == null &&
+        (profileEditing || (tab == "Discover" && hubSearching) ||
+            (tab == "Settings" && settingsPage != "Home"))) {
+        when {
+            profileEditing -> profileEditing = false
+            tab == "Discover" && hubSearching -> hubSearching = false
+            tab == "Settings" -> settingsPage = "Home"
+        }
+    }
 
     // Capture only the smooth aurora layer for Haze, never the scrollable content.
     // This prevents recursive backdrop capture and rectangle-shaped blur artifacts.
