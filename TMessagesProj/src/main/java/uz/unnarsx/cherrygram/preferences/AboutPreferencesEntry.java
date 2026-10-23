@@ -82,6 +82,7 @@ public class AboutPreferencesEntry extends BaseCGPreferencesEntry {
                         getString(R.string.CGP_About_Desc)
                 )
         );
+        if (false) { // GLACIA: disable old app update marketing
         items.add(
                 SettingsActivity.SettingCell.Factory.of(
                         updatesRow,
@@ -92,6 +93,7 @@ public class AboutPreferencesEntry extends BaseCGPreferencesEntry {
                 )
                 .slug(DeeplinkHelper.DeepLinksRepo.CG_Updater_Bottom_Sheet)
         );
+        }
         items.add(
                 SettingsActivity.SettingCell.Factory.of(
                         debugPrefsRow,
@@ -106,6 +108,7 @@ public class AboutPreferencesEntry extends BaseCGPreferencesEntry {
         items.add(UItem.asShadow(null));
 
         items.add(UItem.asHeader(getString(R.string.CGP_Links)));
+        if (false) { // GLACIA: no upstream channels, support groups or promotions
         items.add(UItem.asButton(channelRow, R.drawable.msg_channel_solar, getString(R.string.CGP_ToChannel)));
         items.add(UItem.asButton(betaChannelRow, R.drawable.msg_channel_solar, getString(R.string.CGP_ToBetaChannel)));
         if (!cherrygramSupportChatLoaded) {
@@ -145,6 +148,7 @@ public class AboutPreferencesEntry extends BaseCGPreferencesEntry {
             items.add(UItem.asShadow(null));
         }
 
+        }
         if (!CherrygramCoreConfig.isStandalonePremiumBuild()) {
             String value;
             if (CherrygramCoreConfig.isStandaloneBetaBuild() || CherrygramCoreConfig.isDevBuild()) {
@@ -157,12 +161,8 @@ public class AboutPreferencesEntry extends BaseCGPreferencesEntry {
             );
         }
 
-        items.add(UItem.asButton(crowdinRow, R.drawable.msg_translate_solar, getString(R.string.CGP_Crowdin), "Crowdin")
-                .slug("crowdin")
-        );
-        items.add(UItem.asButton(policyRow, R.drawable.msg_policy_solar, getString(R.string.PrivacyPolicy))
-                .slug("policy")
-        );
+        // GLACIA: hide upstream translation URL and do not mislabel Telegram FAQ
+        // as a GLACIA privacy policy. Add an app-owned policy before release.
         items.add(UItem.asShadow(null));
     }
 
