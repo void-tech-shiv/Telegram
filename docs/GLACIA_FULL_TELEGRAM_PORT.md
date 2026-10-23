@@ -43,10 +43,16 @@ silently copied or migrated.
 
 The upstream contains direct `KotlinFragmentsManager.nfweioufwehr117`
 integrity/guard calls, `DonatesManager.startAutoRefresh`, and
-`Extra.TG_BLOCKED_URL` network-loading code. We cannot assume these
-behave safely after rebranding. The import **does not execute any of this
-code**, signs no APK and does not log into Telegram. A code/security audit
-must resolve it before use.
+`Extra.TG_BLOCKED_URL` network-loading code. **The original
+`AutoBackupUserAgent.woifwfwif4343` and
+`KotlinFragmentsManager.iooewwfueuewu121` can call Android's
+`clearApplicationUserData()` or logout after user-ID matches against an
+upstream-configured list/message.** For the isolated GLACIA source snapshot,
+we intentionally short-circuit both entrypoints, donor auto-refresh,
+remote blocked-account message retrieval and brand-check restart hook.
+This is a mitigation, **not a complete security audit**: other callbacks,
+permission flows and network endpoints still need review. No APK is
+built or installed and no Telegram account is logged into by this import.
 
 The upstream build documentation requires uncommitted `Extra.kt`,
 `secrets_for_ci.env`, app-owned Google Firebase configuration,
