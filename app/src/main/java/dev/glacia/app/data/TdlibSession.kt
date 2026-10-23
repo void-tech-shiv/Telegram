@@ -70,6 +70,42 @@ class TdlibSession(private val context: Context) {
     val folderTabs = _folderTabs.asStateFlow()
     private val _folderChats = MutableStateFlow<Map<Int, List<Chat>>>(emptyMap())
     val folderChats = _folderChats.asStateFlow()
+    /** Create a real Telegram cloud folder, not a local fake category. */
+    fun createTelegramFolder(name: String, kind: String) {
+        val title = name.trim().take(12)
+        if (title.isBlank() || kind !in setOf("People", "Groups", "Channels")) return
+        val folder = TdApi.ChatFolder().apply {
+            this.name = TdApi.ChatFolderName(
+                TdApi.FormattedText(title, emptyArray()), false
+            )
+            colorId = -1
+            pinnedChatIds = longArrayOf()
+            includedChatIds = longArrayOf()
+            excludedChatIds = longArrayOf()
+            includeContacts = kind == "People"
+            includeNonContacts = kind == "People"
+            includeBots = kind == "People"
+            includeGroups = kind == "Groups"
+            includeChannels = kind == "Channels"
+        }
+        client?.send(TdApi.CreateChatFolder(folder)) { response ->
+            if (response is TdApi.Error) {
+                _chatActionError.value =
+                    "Folder creation rejected (Telegram code ${response.code})."
+            }
+        }
+    }
+
+    /** Delete only the folder, never leave any of its chats. */
+    fun deleteTelegramFolder(id: Int) {
+        if (id !in _folderTabs.value.map { it.id }) return
+        client?.send(TdApi.DeleteChatFolder(id, longArrayOf())) { response ->
+            if (response is TdApi.Error) {
+                _chatActionError.value = "Can't delete folder (Telegram code ${response.code})."
+            }
+        }
+    }
+
     fun loadTelegramFolder(id: Int) {
         if (id !in _folderTabs.value.map { it.id }) return
         client?.send(TdApi.LoadChats(TdApi.ChatListFolder(id), 100)) { result ->
