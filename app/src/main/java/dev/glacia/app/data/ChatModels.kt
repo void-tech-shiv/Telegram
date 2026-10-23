@@ -32,6 +32,9 @@ data class Message(
     val attachmentMime: String? = null,
     val playbackFileId: Int? = null,
     val playbackDurationSeconds: Int = 0,
+    /** Telegram sticker's real file and format (preview is separate). */
+    val stickerFileId: Int? = null,
+    val stickerFormat: String? = null,
     val replyToMessageId: Long? = null,
     val edited: Boolean = false,
     val reactions: List<MessageReactionSummary> = emptyList()

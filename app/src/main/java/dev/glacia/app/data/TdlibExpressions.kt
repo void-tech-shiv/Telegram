@@ -13,10 +13,16 @@ data class ExpressionOption(
     val durationSeconds: Int = 0,
     val animated: Boolean = false
 )
+data class StickerPackOption(val id: Long, val title: String)
+
 data class ExpressionState(
     val loading: Boolean = false,
     val stickers: List<ExpressionOption> = emptyList(),
     val gifs: List<ExpressionOption> = emptyList(),
+    val packs: List<StickerPackOption> = emptyList(),
+    val selectedPackId: Long? = null,
+    val packStickers: List<ExpressionOption> = emptyList(),
+    val packLoading: Boolean = false,
     val error: String? = null
 )
 
@@ -32,8 +38,21 @@ class TdlibExpressions(
 ) {
     private val lock = Any()
     private var generation = 0L
+    private var packRequestGeneration = 0L
     private val _state = MutableStateFlow(ExpressionState())
     val state = _state.asStateFlow()
+
+    private fun toStickerOption(sticker: TdApi.Sticker): ExpressionOption? {
+        val file = sticker.sticker ?: return null
+        val thumbnail = if (sticker.format is TdApi.StickerFormatWebp)
+            file else sticker.thumbnail?.file
+        files.ensure(thumbnail)
+        // Picker fetches only small static preview files. Bulk-loading a
+        // sticker pack must never download 120 full TGS/WebM originals.
+        return ExpressionOption(
+            file.id, thumbnail?.id, ExpressionPolicy.normalizedEmoji(sticker.emoji)
+        )
+    }
 
     /** TDLib recents/saved items, without automatic downloading of full GIFs. */
     fun load() {
@@ -55,15 +74,7 @@ class TdlibExpressions(
                             .filterNotNull()
                             .filter { it.fullType !is TdApi.StickerFullTypeCustomEmoji }
                             .take(60)
-                            .mapNotNull { sticker ->
-                                val file = sticker.sticker ?: return@mapNotNull null
-                                // Only decode still WEBP thumbnails via Coil; vector/video
-                                // formats are not rendered as static bitmap guesses.
-                                val image = if (sticker.format is TdApi.StickerFormatWebp) file
-                                    else sticker.thumbnail?.file
-                                files.ensure(image)
-                                ExpressionOption(file.id, image?.id, ExpressionPolicy.normalizedEmoji(sticker.emoji))
-                            }
+                            .mapNotNull(::toStickerOption)
                         _state.value = _state.value.copy(
                             stickers = models,
                             error = null
@@ -71,6 +82,20 @@ class TdlibExpressions(
                     }
                     is TdApi.Error -> _state.value = _state.value.copy(
                         error = "Sticker list unavailable (Telegram code ${response.code})."
+                    )
+                }
+            }
+        }
+        active.send(TdApi.GetInstalledStickerSets(TdApi.StickerTypeRegular())) { response ->
+            synchronized(lock) {
+                if (epoch != generation) return@synchronized
+                when (response) {
+                    is TdApi.StickerSets -> _state.value = _state.value.copy(
+                        packs = response.sets.orEmpty().filterNotNull()
+                            .take(80).map { StickerPackOption(it.id, it.title) }
+                    )
+                    is TdApi.Error -> _state.value = _state.value.copy(
+                        error = "Sticker packs unavailable (Telegram code ${response.code})."
                     )
                 }
             }
@@ -100,6 +125,39 @@ class TdlibExpressions(
                     )
                 }
                 _state.value = _state.value.copy(loading = false)
+            }
+        }
+    }
+
+    /** The selected installed pack is fetched on tap; never bulk-load all packs. */
+    fun loadPack(setId: Long) {
+        if (setId <= 0L) return
+        val active = client() ?: return
+        val epoch: Long
+        val request: Long
+        synchronized(lock) {
+            epoch = generation
+            request = ++packRequestGeneration
+            _state.value = _state.value.copy(
+                selectedPackId = setId, packLoading = true,
+                packStickers = emptyList(), error = null
+            )
+        }
+        active.send(TdApi.GetStickerSet(setId)) { response ->
+            synchronized(lock) {
+                if (generation != epoch || packRequestGeneration != request) return@synchronized
+                _state.value = when (response) {
+                    is TdApi.StickerSet -> _state.value.copy(
+                        packLoading = false,
+                        packStickers = response.stickers.orEmpty().filterNotNull()
+                            .take(120).mapNotNull(::toStickerOption)
+                    )
+                    is TdApi.Error -> _state.value.copy(
+                        packLoading = false,
+                        error = "Sticker pack unavailable (Telegram code ${response.code})."
+                    )
+                    else -> _state.value.copy(packLoading = false)
+                }
             }
         }
     }
@@ -145,6 +203,7 @@ class TdlibExpressions(
     fun clear() {
         synchronized(lock) {
             generation++
+            packRequestGeneration++
             _state.value = ExpressionState()
         }
     }

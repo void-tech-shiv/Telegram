@@ -46,16 +46,38 @@ class TdlibFileStore(private val client: () -> Client?) {
             synchronous = false
         }
         active.send(download) { response ->
-            if (response is TdApi.File) accept(response)
-            // Errors do not produce unbounded automatic retries on every recomposition.
+            when (response) {
+                is TdApi.File -> accept(response)
+                is TdApi.Error -> synchronized(lock) {
+                    requested.remove(file.id)
+                    // The UI can offer explicit retry if thumbnail fetch fails.
+                    _transfers.value = _transfers.value + (
+                        file.id to FileTransfer(
+                            error = "Telegram media couldn't download (code ${response.code})."
+                        )
+                    )
+                }
+            }
+            // No infinite auto retries from recomposition.
         }
     }
 
-    /** Only invoked after a document is explicitly tapped by its user. */
-    fun requestDocument(fileId: Int) {
+    /** Auto-fetch only known, small Telegram sticker files; never GIF originals. */
+    fun ensureSmallSticker(file: TdApi.File?) {
+        if (file == null) return
+        val size = maxOf(file.size, file.expectedSize)
+        if (size in 1..1_000_000) ensure(file)
+        else observeExisting(file)
+    }
+
+    /** Only invoked after a document/media download is explicitly tapped. */
+    fun requestDocument(fileId: Int, retry: Boolean = false) {
+        if (fileId <= 0) return
         val active = client() ?: return
         synchronized(lock) {
-            if (_paths.value.containsKey(fileId) || !manualRequests.add(fileId)) return
+            if (_paths.value.containsKey(fileId)) return
+            if (!retry && !manualRequests.add(fileId)) return
+            manualRequests.add(fileId)
             _transfers.value = _transfers.value + (fileId to FileTransfer(downloading = true))
         }
         val request = TdApi.DownloadFile().apply {
@@ -95,6 +117,7 @@ class TdlibFileStore(private val client: () -> Client?) {
             publish(file.id, local.path)
             synchronized(lock) {
                 manualRequests.remove(file.id)
+                requested.remove(file.id)
                 _transfers.value = _transfers.value - file.id
             }
         } else {

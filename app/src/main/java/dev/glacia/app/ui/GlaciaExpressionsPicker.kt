@@ -2,6 +2,8 @@ package dev.glacia.app.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -32,11 +34,16 @@ internal fun GlaciaExpressionsPicker(
     filePaths: Map<Int, String>,
     dark: Boolean,
     onReload: () -> Unit,
+    onLoadPack: (Long) -> Unit,
     onSend: (ExpressionOption) -> Unit,
     onDismiss: () -> Unit
 ) {
     var tab by remember { mutableIntStateOf(0) }
-    val items = if (tab == 0) state.stickers else state.gifs
+    val items = when (tab) {
+        0 -> state.stickers
+        1 -> state.packStickers
+        else -> state.gifs
+    }
     val foreground = if (dark) Color.White else Color(0xFF152443)
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -55,12 +62,35 @@ internal fun GlaciaExpressionsPicker(
                         modifier = Modifier.weight(1f))
                     TextButton(onClick = onDismiss) { Text("Close") }
                 }
-                Row {
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
                     FilterChip(selected = tab == 0, onClick = { tab = 0 },
-                        label = { Text("Recent stickers") })
-                    Spacer(Modifier.width(9.dp))
+                        label = { Text("Recent") })
                     FilterChip(selected = tab == 1, onClick = { tab = 1 },
+                        label = { Text("My packs") })
+                    FilterChip(selected = tab == 2, onClick = { tab = 2 },
                         label = { Text("Saved GIFs") })
+                }
+                if (tab == 1) {
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(7.dp)
+                    ) {
+                        state.packs.forEach { pack ->
+                            FilterChip(
+                                selected = state.selectedPackId == pack.id,
+                                onClick = { onLoadPack(pack.id) },
+                                label = { Text(pack.title.take(24)) }
+                            )
+                        }
+                    }
+                    if (state.packLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
+                    if (state.packs.isEmpty() && !state.loading) {
+                        Text("No installed sticker packs on this account.",
+                            color = foreground, style = MaterialTheme.typography.bodySmall)
+                    }
                 }
                 state.error?.let {
                     Text(it, color = MaterialTheme.colorScheme.error,
@@ -73,12 +103,16 @@ internal fun GlaciaExpressionsPicker(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            if (tab == 0) "No recent stickers yet."
-                            else "No saved Telegram GIFs yet.",
+                            when (tab) {
+                                0 -> "No recent stickers yet."
+                                1 -> if (state.packs.isEmpty()) "No installed sticker packs."
+                                    else "Select a sticker pack above."
+                                else -> "No saved Telegram GIFs yet."
+                            },
                             color = foreground
                         )
                         Spacer(Modifier.height(5.dp))
-                        Text("Use Telegram on another device to add items.",
+                        Text("Use Telegram to add a pack or save a GIF.",
                             color = foreground.copy(alpha = 0.65f),
                             style = MaterialTheme.typography.bodySmall)
                         TextButton(onClick = onReload) { Text("Refresh") }

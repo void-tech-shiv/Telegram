@@ -247,10 +247,12 @@ class TdlibSession(private val context: Context) {
     val filePaths = fileStore.paths
     val documentTransfers = fileStore.transfers
     fun requestDocumentDownload(fileId: Int) = fileStore.requestDocument(fileId)
+    fun retryMediaDownload(fileId: Int) = fileStore.requestDocument(fileId, retry = true)
     private val messaging = TdlibMessages({ client }, fileStore)
     private val expressions = TdlibExpressions({ client }, fileStore, messaging)
     val expressionState = expressions.state
     fun loadExpressions() = expressions.load()
+    fun loadStickerPack(setId: Long) = expressions.loadPack(setId)
     fun sendExpression(chatId: Long, item: ExpressionOption, replyTo: Long? = null) =
         expressions.send(chatId, item, replyTo)
     private val messageSearch = TdlibMessageSearch { client }

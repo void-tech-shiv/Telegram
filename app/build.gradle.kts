@@ -33,8 +33,8 @@ android {
         applicationId = "dev.glacia.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 26
-        versionName = "0.3.20"
+        versionCode = 27
+        versionName = "0.3.21"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("boolean", "FCM_CONFIGURED", "${file("google-services.json").isFile}")
         buildConfigField("int", "TELEGRAM_API_ID", "$telegramApiId")
@@ -91,6 +91,8 @@ dependencies {
     implementation("com.google.firebase:firebase-messaging")
     implementation("androidx.media3:media3-exoplayer:1.11.1")
     implementation("androidx.media3:media3-ui:1.11.1")
+    // Telegram TGS animated stickers are gzipped Lottie JSON.
+    implementation("com.airbnb.android:lottie-compose:6.7.1")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
     testImplementation("junit:junit:4.13.2")
 }

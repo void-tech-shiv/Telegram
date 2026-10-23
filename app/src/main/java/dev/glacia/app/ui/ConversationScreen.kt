@@ -115,6 +115,7 @@ fun ConversationScreen(
     filePaths: Map<Int, String>,
     documentTransfers: Map<Int, FileTransfer>,
     onDownloadDocument: (Int) -> Unit,
+    onRetryDownload: (Int) -> Unit,
     loading: Boolean,
     error: String?,
     dark: Boolean,
@@ -134,6 +135,7 @@ fun ConversationScreen(
     onVoice: (RecordedVoice) -> Unit,
     expressions: ExpressionState,
     onRefreshExpressions: () -> Unit,
+    onLoadStickerPack: (Long) -> Unit,
     onSendExpression: (ExpressionOption, Long?) -> Unit,
     mediaBusy: Boolean,
     onLoadMore: () -> Unit,
@@ -374,6 +376,7 @@ fun ConversationScreen(
             filePaths = filePaths,
             dark = dark,
             onReload = onRefreshExpressions,
+            onLoadPack = onLoadStickerPack,
             onSend = { item ->
                 if (active && !mediaBusy) {
                     onSendExpression(item, replyingTo?.id)
@@ -471,7 +474,7 @@ fun ConversationScreen(
                             if (msg.outgoing) Arrangement.End else Arrangement.Start
                     ) {
                         val isVisual = msg.mediaType in setOf(
-                            "photo", "video", "sticker", "animation"
+                            "photo", "video", "sticker", "animated_emoji", "animation"
                         )
                         val imageDocument = msg.mediaType == "document" &&
                             DocumentKind.isImage(msg.attachmentMime, msg.attachmentName)
@@ -530,7 +533,23 @@ fun ConversationScreen(
                                 Spacer(Modifier.height(7.dp))
                             }
                             val thumbnailPath = msg.mediaFileId?.let(filePaths::get)
-                            if (thumbnailPath != null && isVisual) {
+                            if (msg.mediaType == "sticker" || msg.mediaType == "animated_emoji") {
+                                val originalId = msg.stickerFileId
+                                val downloadedSticker = originalId?.let(filePaths::get)
+                                val transfer = originalId?.let(documentTransfers::get)
+                                GlaciaStickerMedia(
+                                    stickerFormat = msg.stickerFormat,
+                                    filePath = downloadedSticker,
+                                    thumbnailPath = thumbnailPath,
+                                    label = "Sticker",
+                                    onDownload = {
+                                        if (originalId != null) onRetryDownload(originalId)
+                                    },
+                                    downloading = transfer?.downloading == true,
+                                    error = transfer?.error
+                                )
+                                Spacer(Modifier.height(5.dp))
+                            } else if (thumbnailPath != null && isVisual) {
                                 GlassImagePreview(
                                     path = thumbnailPath,
                                     description = "${msg.mediaType} preview",
@@ -560,7 +579,8 @@ fun ConversationScreen(
                                 Spacer(Modifier.height(7.dp))
                             } else if (isVisual) {
                                 Text(
-                                    "Preview unavailable",
+                                    if (msg.mediaType == "animation") "GIF preview unavailable"
+                                    else "Preview unavailable",
                                     color = secondary,
                                     fontSize = 12.sp
                                 )
@@ -607,11 +627,12 @@ fun ConversationScreen(
                                                         msg.playbackDurationSeconds
                                                     )
                                                 } else {
-                                                    onDownloadDocument(originalId)
+                                                    if (transfer?.downloading == true)
+                                                        onRetryDownload(originalId)
+                                                    else onDownloadDocument(originalId)
                                                 }
                                             },
-                                            enabled = originalPath != null ||
-                                                transfer?.downloading != true
+                                            enabled = true
                                         ) {
                                             Icon(
                                                 if (originalPath != null) Icons.Rounded.PlayArrow
@@ -629,7 +650,7 @@ fun ConversationScreen(
                                                         val total = transfer.totalBytes
                                                         if (total > 0L)
                                                             "Downloading ${(transfer.downloadedBytes * 100L / total).coerceIn(0L, 100L)}%"
-                                                        else "Downloading…"
+                                                        else "Downloading… Tap to retry"
                                                     }
                                                     transfer?.error != null -> "Retry download"
                                                     else -> if (video) "Download video/GIF" else "Download audio"
@@ -757,7 +778,7 @@ fun ConversationScreen(
                                         .removePrefix(" · ").trim()
                                     "animation" -> msg.text.removePrefix("🎞 GIF")
                                         .removePrefix(" · ").trim()
-                                    "sticker" -> if (thumbnailPath != null) "" else msg.text
+                                    "sticker", "animated_emoji" -> ""
                                     else -> msg.text
                                 }
                                 if (displayText.isNotEmpty()) {
