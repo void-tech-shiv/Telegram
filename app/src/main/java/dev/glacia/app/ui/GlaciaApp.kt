@@ -544,10 +544,25 @@ private fun SettingsScreen(selected: ThemeChoice, dark: Boolean, onSelect: (Them
             }
         }
         Spacer(Modifier.height(24.dp))
-        Text("PHASE 3 • LIVE TEXT", color = accent(dark),
+        Text("GLACIA  •  v0.3.4", color = accent(dark),
+            fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp, fontSize = 11.sp)
+        Spacer(Modifier.height(8.dp))
+        Text("Experimental Telegram client", color = ink(dark),
+            fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Available: real Telegram chats, text messaging, photos, file downloads, " +
+                "video and audio playback, chat filters, and Telegram Discover search.",
+            color = mutedInk(dark), fontSize = 13.sp, lineHeight = 20.sp
+        )
+        Spacer(Modifier.height(14.dp))
+        Text("STILL IN DEVELOPMENT", color = accent(dark),
             fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp, fontSize = 11.sp)
         Spacer(Modifier.height(7.dp))
-        Text("Telegram text history and sending are enabled. Media rendering and notifications are coming next.",
-            color = mutedInk(dark), fontSize = 13.sp)
+        Text(
+            "Notifications, typing indicators, read receipts, voice recording, " +
+                "attachment sending and full message search are not ready yet.",
+            color = mutedInk(dark), fontSize = 13.sp, lineHeight = 20.sp
+        )
     }
 }
