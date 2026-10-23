@@ -4,7 +4,7 @@ import android.content.Context
 import android.media.AudioManager
 import io.github.pytgcalls.NTgCalls
 import io.github.pytgcalls.media.AudioDescription
-import io.github.pytgcalls.media.Frame
+import io.github.pytgcalls.models.Frame
 import io.github.pytgcalls.media.MediaDescription
 import io.github.pytgcalls.media.MediaSource
 import io.github.pytgcalls.media.StreamDevice
