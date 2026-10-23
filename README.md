@@ -1,61 +1,47 @@
-# GLACIA — The Glass Messenger
+# GLACIA — Liquid Glass Telegram Client
 
-An **original Android Jetpack Compose Liquid Glass interface** intended to become a Telegram client through TDLib.
+A Kotlin + Jetpack Compose third-party Telegram client backed by TDLib with dark/light Liquid Glass themes.
 
-**Current status: Phase 1 UI-only demo.** There is NO Telegram authorization, chat sync, sending to Telegram, notification delivery or TDLib binary in this commit. All names and messages are fictional. The composer only adds messages to local, in-memory demo state (lost on app restart).
+## Current milestone: Phase 3 (draft / experimental)
 
-## Included
+**Available on `feature/phase-3-messaging`:**
+- Telegram phone / verification code / two-step password authorization
+- Real Main chat list, search across loaded chat titles and previews
+- Chat history, older-message pages, and real-time message updates
+- Real plain-text sending, delivery/error status, and message deduplication
+- Media message *labels* (actual display / downloading is not yet implemented)
+- Midnight Glass, Frosted Daylight, Follow System appearance
 
-- Adaptive Midnight Glass / Frosted Daylight / Follow System modes, persisted via DataStore
-- Real backdrop/refraction glass on floating header, bottom navigation and composer via Haze 2
-- Aurora gradient background, demo chat list, live local search, chat bubbles and mock composer
-- Chats / Discover / Settings tabs with back navigation
-- Repository and TelegramGateway interfaces prepared for later real TDLib adapter
-- Android CI to compile and attach a debug APK on every push
+**This is an early development build, not a full Telegram replacement.** Calls, media viewing/upload, push notifications, global search and group-topic support are unfinished. Open a test conversation before trusting it for everyday communication.
 
-## Stack
+## Local Android build
 
-- Kotlin 2.4.20, Android Gradle Plugin 8.13.2, Gradle 8.13, JDK 17
-- Android SDK 36, minSdk 26, targetSdk 36
-- Jetpack Compose BOM 2026.09.00, Material3
-- Haze 2.0.1 core + haze-glass
-- Preferences DataStore 1.2.1
-- No backend, no secrets, no Telegram credentials
+Requirements: Android Studio, JDK 17, API 37 Android SDK, and a device or emulator.
 
-## Build
+1. Clone `https://github.com/void-tech-shiv/Telegram.git`.
+2. Checkout `feature/phase-3-messaging`.
+3. Obtain Telegram API ID/hash from `https://my.telegram.org/apps`.
+4. Create / edit **untracked** `local.properties` at project root and preserve your existing SDK path:
 
-1. Install Android Studio with Android SDK 36 and JDK 17.
-2. Clone: git clone https://github.com/void-tech-shiv/Telegram.git
-3. Open the folder in Android Studio. This repo includes Gradle wrapper scripts and jar; sync Gradle.
-4. Run the :app configuration on Android 8.0+ or use ./gradlew :app:assembleDebug
-5. The debug APK is at app/build/outputs/apk/debug/app-debug.apk.
+```properties
+telegram.apiId=YOUR_NUMERIC_ID
+telegram.apiHash=YOUR_PRIVATE_API_HASH
+```
 
-Or in GitHub Actions, open **Android demo CI**, run workflow, then download the **GLACIA-phase1-debug-apk** artifact.
+5. Gradle Sync; run `./gradlew :app:assembleDebug :app:testDebugUnitTest` (or `gradlew.bat` on Windows).
+6. Use Android Studio Run. Upgrade over existing GLACIA without deleting app data if preserving your TDLib session.
 
-## Architecture
+**Never commit your API hash or share a personally configured APK.** The API hash is packaged in the app at build time and is extractable. Public GitHub Actions builds have placeholder credentials by design.
 
-- app/data/ChatModels.kt — UI models + repository contract
-- app/data/TelegramGateway.kt — typed Phase 2 TDLib boundary (no implementation)
-- app/settings/ThemePreferences.kt — DataStore persistence
-- app/ui/GlaciaTheme.kt — adaptive colors
-- app/ui/GlaciaApp.kt — chat list, chat details, search, navigation and Haze surfaces
-- app/src/test — JVM unit tests
+## Project layout
 
-## Roadmap
+- `app/data/TdlibSession.kt` — authorization, chat headers and TDLib client lifecycle
+- `app/data/TdlibMessages.kt` — chat history, real sends and live TDLib events
+- `app/data/MessageReducer.kt` — deterministic message merge/delete logic
+- `app/ui/GlaciaApp.kt` — adaptive Liquid Glass navigation and chat list
+- `app/ui/ConversationScreen.kt` — live message bubbles and composer
+- `app/settings/ThemePreferences.kt` — DataStore theme settings
+- `app/src/test/` — JVM unit tests
+- `docs/PHASE2.md`, `docs/PHASE3.md` — implementation notes / test checklists
 
-- **Phase 1:** Offline UI foundation (this commit)
-- **Phase 2:** Integrate TDLib, credentials from a private local file, authorization state machine and authenticated chat list
-- **Phase 3:** Real conversations, message media, notifications and multiple-account architecture
-- **Phase 4:** Hardening, accessibility, performance and Play Store compliance
-
-## Security and trademarks
-
-GLACIA is not affiliated with Telegram. Do not ship credentials, phone numbers, database files or authorization tokens into git. Telegram Secret Chats require particular handling; hidden UI panels are not equivalent to E2EE. Audit TDLib handling and third-party dependency versions before any live-account login. Honor Telegram API terms and attribution requirements.
-
-## Phase 1 QA checklist
-
-- Switch dark/light/system, force-stop and reopen: choice persists.
-- Search demo chats, open a chat, send a local-only message, press Back.
-- Switch navigation tabs and open Settings.
-- Rotate device, test large fonts and accessibility contrast.
-- Confirm no Telegram login or network permission exists yet.
+GLACIA is independent and not affiliated with Telegram. Native TDLib core comes from a community packaging project; verify the binary provenance and security posture before handling sensitive accounts.
