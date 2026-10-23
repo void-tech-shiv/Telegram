@@ -10,25 +10,32 @@ from new sticker/GIF features, toward account and chat essentials.
   by default. No `READ_CONTACTS` permission or bulk address-book import.
 - **4.2 Security:** real Telegram active sessions, blocked user list (first
   100), block a private-chat peer, unblock selected user and *confirmed*
-  revocation of a **different** Telegram login session. Cannot revoke the
+  revocation of a **different** Telegram login session. Live last-seen,
+  phone-number and call audience rules, with confirmed changes preserving
+  explicit per-user/per-chat exceptions. Cannot revoke the
   currently active session with the remote-device button. No IPs or tokens
   displayed or logged.
 - **4.3 Chats:** chat information from Telegram `GetChat`, most recently
   pinned message from `GetChatPinnedMessage`, mark unread, jump to pinned
-  message. Existing search, archives, pinning, media remain.
-- **4.4 Group/channel admin basics:** rename and description edit,
-  permission-checked by Telegram. A non-admin receives server-side error;
+  message. Real Telegram-synced folder chips, basic People/Groups/Channels
+  folder creation and confirmed folder deletion without leaving chats.
+  Existing search, archives, pinning and media remain.
+- **4.4 Group/channel admin basics:** read administrator count, rename and
+  description edit, and explicitly confirmed adding a Telegram cloud contact
+  to a group/channel. Actions are permission-checked by Telegram.
+  A non-admin receives server-side error;
   there are no fake success states.
 - **4.5 Communities:** create native Telegram supergroups or broadcast
   channels; explicitly generate an invite link after a security warning;
   invite is shown locally only, never auto-published.
 
 ## Still not feature-complete — known gates
-- All user privacy rules (phone number, last seen, forwarding, calls),
-  full 2-step-password recovery, email changes, biometric local app lock.
+- Remaining privacy rules (forwarding, invites, voice notes and other granular
+  exceptions), full 2-step-password recovery, email changes, biometric local app lock.
 - Admin member role promotion/restriction, bans, discussion groups,
   topics, slow mode, live streams and join requests.
-- Full Telegram-synced chat-folder CRUD (and per-folder chat composition),
+- Full flexible Telegram folder editor (custom include/exclude chats, pinned
+  folder chats and complete rename/update),
   full pinned-message list, member/profile/gallery detail screens.
 - Username multi-alias management, photo history/removal, optional device
   contact synchronization; multi-account switching.
@@ -69,8 +76,10 @@ uninstall/clear your existing GLACIA data just to update.
    second-device session with confirmation; verify current GLACIA remains
    logged in and test device is logged out. Block/unblock a test user.
 4. Chats: inspect private/group/channel, pinned message navigation,
-   mark unread and preserve message receipt consistency.
-5. Create a group and a channel; edit title/description with creator rights,
+   mark unread, create/delete a People/Groups folder and verify sync on official
+   Telegram without leaving or deleting messages.
+5. Create a group and a channel; edit title/description and add a consenting
+   test contact with creator rights,
    attempt admin edit from a non-admin, generate invite and open it from
    the other Telegram account. Treat invite as sensitive.
 6. Regression: native voice/video on both phones, Home background audio,
