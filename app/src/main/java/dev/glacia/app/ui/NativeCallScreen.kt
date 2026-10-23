@@ -40,6 +40,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -301,7 +303,11 @@ private fun GlassCallAction(
             contentColor = if (selected) Midnight else Color.White,
             modifier = Modifier.size(57.dp),
         ) {
-            IconButton(onClick = onClick, enabled = enabled) { icon() }
+            IconButton(
+                onClick = onClick,
+                enabled = enabled,
+                modifier = Modifier.semantics { contentDescription = label }
+            ) { icon() }
         }
         Spacer(Modifier.height(7.dp))
         Text(
