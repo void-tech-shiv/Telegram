@@ -37,7 +37,9 @@ class TdlibSession(private val context: Context) {
     val chats = _chats.asStateFlow()
     private val known = linkedMapOf<Long, TdApi.Chat>()
     private var client: Client? = null
-    private val messaging = TdlibMessages { client }
+    private val fileStore = TdlibFileStore { client }
+    val filePaths = fileStore.paths
+    private val messaging = TdlibMessages({ client }, fileStore)
     val messages = messaging.messages
     val historyLoading = messaging.loading
     val messageErrors = messaging.errors
@@ -108,6 +110,7 @@ class TdlibSession(private val context: Context) {
 
     private fun onUpdate(obj: TdApi.Object) {
         // Chat headers and message timelines share the same authorized TDLib client.
+        fileStore.onUpdate(obj)
         messaging.onUpdate(obj)
         when (obj) {
             is TdApi.UpdateAuthorizationState -> onAuth(obj.authorizationState)
@@ -129,6 +132,10 @@ class TdlibSession(private val context: Context) {
                         obj.position
                     emitChats()
                 }
+            }
+            is TdApi.UpdateChatPhoto -> synchronized(known) {
+                known[obj.chatId]?.photo = obj.photo
+                emitChats()
             }
             is TdApi.UpdateChatReadInbox -> synchronized(known) {
                 known[obj.chatId]?.unreadCount = obj.unreadCount; emitChats()
@@ -166,6 +173,8 @@ class TdlibSession(private val context: Context) {
             }
             is TdApi.AuthorizationStateClosed -> {
                 messaging.clear()
+                fileStore.clear()
+                synchronized(known) { known.clear(); _chats.value = emptyList() }
                 client = null
                 _auth.value = Auth.Starting
             }
@@ -187,6 +196,7 @@ class TdlibSession(private val context: Context) {
             .map { (chat, _) ->
                 val preview = (chat.lastMessage?.content as? TdApi.MessageText)?.text?.text
                     ?: if (chat.lastMessage == null) "No messages" else "Media or another message"
+                fileStore.ensure(chat.photo?.small)
                 Chat(
                     id = chat.id,
                     title = chat.title,
@@ -194,7 +204,8 @@ class TdlibSession(private val context: Context) {
                     preview = preview,
                     time = "",
                     unread = chat.unreadCount,
-                    isGroup = chat.type !is TdApi.ChatTypePrivate
+                    isGroup = chat.type !is TdApi.ChatTypePrivate,
+                    photoFileId = chat.photo?.small?.id
                 )
             }.toList()
     }
