@@ -9,7 +9,7 @@ data class CommunityChatInfo(
     val id: Long,
     val title: String,
     val kind: String,
-    val memberCount: Int = 0,
+    val administratorCount: Int = 0,
     val pinnedMessageId: Long? = null,
     val pinnedMessageText: String? = null
 )
@@ -49,6 +49,18 @@ class TdlibCoreCommunities(private val client: () -> Client?) {
                         }
                     )
                 )
+            }
+        }
+        active.send(TdApi.GetChatAdministrators(chatId)) { response ->
+            if (response is TdApi.ChatAdministrators) synchronized(lock) {
+                if (token != epoch) return@synchronized
+                _state.value.selected?.let { chat ->
+                    _state.value = _state.value.copy(
+                        selected = chat.copy(
+                            administratorCount = response.administrators?.size ?: 0
+                        )
+                    )
+                }
             }
         }
         active.send(TdApi.GetChatPinnedMessage(chatId)) { response ->
@@ -92,11 +104,31 @@ class TdlibCoreCommunities(private val client: () -> Client?) {
     }
 
     /** Owner/admin rights are checked by Telegram; never bypass them. */
+    /** Explicit member add, restricted by Telegram rights and privacy. */
+    fun addMember(chatId: Long, userId: Long) {
+        if (userId <= 0L) return
+        val active = client() ?: return
+        active.send(TdApi.AddChatMember(chatId, userId, 0)) { response ->
+            synchronized(lock) {
+                _state.value = _state.value.copy(
+                    notice = when (response) {
+                        is TdApi.Error ->
+                            "Telegram could not add member (code ${response.code})."
+                        is TdApi.FailedToAddMembers ->
+                            if (response.failedToAddMembers.orEmpty().isEmpty())
+                                "Telegram member added."
+                            else "Telegram couldn't add that user (privacy or invite restriction)."
+                        else -> "Member-add request sent."
+                    }
+                )
+            }
+        }
+    }
+
     fun rename(chatId: Long, title: String) {
         val value = title.trim().take(128)
         if (value.isEmpty()) return
         perform(TdApi.SetChatTitle(chatId, value), "Chat title updated.")
-        inspect(chatId)
     }
 
     fun description(chatId: Long, about: String) {
