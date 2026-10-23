@@ -89,6 +89,12 @@ for folder in ["TMessagesProj_App", "TMessagesProj_AppHuawei",
     if p.exists():
         save(p,p.read_text(encoding="utf8").replace("Cherrygram-","GLACIA-"))
 
+# Original release/mirror workflow is not part of GLACIA and cannot be
+# imported by a limited-permission GitHub Actions token.
+old_workflow = root/".github/workflows/mirror.yml"
+if old_workflow.exists():
+    old_workflow.unlink()
+
 # Do not re-publish old project's Firebase config or signing keys.
 removed=[]
 for pat in ["google-services.json", "*.jks", "*.keystore"]:
