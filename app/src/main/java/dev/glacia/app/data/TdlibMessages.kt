@@ -179,8 +179,11 @@ class TdlibMessages(
     private fun thumbnailFor(content: TdApi.MessageContent?): TdApi.File? = when (content) {
         is TdApi.MessagePhoto -> {
             val sorted = content.photo?.sizes?.sortedBy { it.width.toLong() * it.height }
-            (sorted?.firstOrNull { maxOf(it.width, it.height) >= 320 }
-                ?: sorted?.lastOrNull())?.photo
+            (sorted?.firstOrNull {
+                maxOf(it.width, it.height) in 240..1024
+            } ?: sorted?.lastOrNull {
+                maxOf(it.width, it.height) <= 1024
+            })?.photo
         }
         is TdApi.MessageVideo -> content.video?.thumbnail?.file
         else -> null
@@ -188,8 +191,8 @@ class TdlibMessages(
 
     private fun displayContent(content: TdApi.MessageContent?): String = when (content) {
         is TdApi.MessageText -> content.text?.text.orEmpty()
-        is TdApi.MessagePhoto -> "📷 Photo"
-        is TdApi.MessageVideo -> "🎥 Video"
+        is TdApi.MessagePhoto -> "📷 Photo" + (content.caption?.text?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: "")
+        is TdApi.MessageVideo -> "🎥 Video" + (content.caption?.text?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: "")
         is TdApi.MessageAnimation -> "🎞 Animation"
         is TdApi.MessageVoiceNote -> "🎤 Voice message"
         is TdApi.MessageVideoNote -> "🎬 Video message"
