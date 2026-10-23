@@ -40,6 +40,34 @@ class GlaciaNotifications(context: Context) {
 
     fun setForeground(isForeground: Boolean) { foreground = isForeground }
 
+    /** A deliberate local test to distinguish Android permission/channel issues
+     *  from Telegram/TDLib notification delivery. Does not send a Telegram message.
+     */
+    fun sendTestNotification(): Boolean {
+        if (!hasPermission()) return false
+        val launch = Intent(app, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+        val pending = PendingIntent.getActivity(
+            app, 0, launch,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val test = Notification.Builder(app, MESSAGES)
+            .setSmallIcon(android.R.drawable.ic_dialog_email)
+            .setContentTitle("GLACIA · Test notification")
+            .setContentText("Android notifications are enabled.")
+            .setContentIntent(pending)
+            .setAutoCancel(true)
+            .setCategory(Notification.CATEGORY_STATUS)
+            .setVisibility(Notification.VISIBILITY_SECRET)
+            .build()
+        // Reserved negative ID: TDLib group IDs are positive.
+        manager.notify(-3650, test)
+        return true
+    }
+
+    fun areNotificationsAllowed(): Boolean = hasPermission()
+
     fun onUpdate(update: TdApi.Object) {
         if (update !is TdApi.UpdateNotificationGroup) return
         val id = update.notificationGroupId
