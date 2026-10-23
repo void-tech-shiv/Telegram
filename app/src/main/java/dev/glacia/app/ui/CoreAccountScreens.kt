@@ -12,6 +12,7 @@ import androidx.compose.material.icons.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -64,6 +65,7 @@ internal fun CoreContactsScreen(
     dark: Boolean,
     onRefresh: () -> Unit,
     onOpenContact: (Long) -> Unit,
+    onOpenSavedMessages: () -> Unit,
     onDismissNotice: () -> Unit
 ) {
     var query by remember { mutableStateOf("") }
@@ -85,6 +87,25 @@ internal fun CoreContactsScreen(
             IconButton(onClick = onRefresh, enabled = !state.contactsLoading) {
                 Icon(Icons.Rounded.Refresh, "Refresh Telegram contacts", tint = coreAccent(dark))
             }
+        }
+        Spacer(Modifier.height(16.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth()
+                .clip(RoundedCornerShape(20.dp))
+                .background(coreTile(dark))
+                .clickable(enabled = state.self != null) { onOpenSavedMessages() }
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Rounded.Bookmark, "Saved Messages", tint = coreAccent(dark))
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Saved Messages", color = coreInk(dark),
+                    fontWeight = FontWeight.SemiBold)
+                Text("Your private Telegram cloud chat",
+                    color = coreMuted(dark), fontSize = 12.sp)
+            }
+            Icon(Icons.Rounded.ArrowForward, null, tint = coreAccent(dark))
         }
         Spacer(Modifier.height(16.dp))
         OutlinedTextField(
