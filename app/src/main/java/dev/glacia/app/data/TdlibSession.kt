@@ -72,6 +72,12 @@ class TdlibSession(private val context: Context) {
     private var client: Client? = null
     private val fileStore = TdlibFileStore { client }
     private val discovery = TdlibDiscovery({ client }, fileStore)
+    private val typing = TdlibTyping { client }
+    private val notifications = GlaciaNotifications(context)
+    val typingActivities = typing.activity
+    fun sendTypingAction(chatId: Long, typingNow: Boolean) = typing.sendTyping(chatId, typingNow)
+    fun pruneTyping() = typing.prune()
+    fun setAppForeground(foreground: Boolean) = notifications.setForeground(foreground)
     val discoveryResults = discovery.results
     val discoveryLoading = discovery.loading
     val discoveryError = discovery.error
@@ -217,6 +223,8 @@ class TdlibSession(private val context: Context) {
         // Chat headers and message timelines share the same authorized TDLib client.
         fileStore.onUpdate(obj)
         messaging.onUpdate(obj)
+        typing.onUpdate(obj)
+        notifications.onUpdate(obj)
         when (obj) {
             is TdApi.UpdateAuthorizationState -> onAuth(obj.authorizationState)
             is TdApi.UpdateNewChat -> {
@@ -302,6 +310,7 @@ class TdlibSession(private val context: Context) {
             is TdApi.AuthorizationStateClosed -> {
                 messaging.clear()
                 discovery.clear()
+                typing.clear()
                 fileStore.clear()
                 synchronized(viewLock) { maxViewedByChat.clear() }
                 _outboxRead.value = emptyMap()
@@ -395,6 +404,7 @@ class TdlibSession(private val context: Context) {
     fun submitPassword(password: String) = request(TdApi.CheckAuthenticationPassword(password), "Two-step password")
 
     fun close() {
+        typing.clear()
         client?.send(TdApi.Close()) { }
         client = null
     }
