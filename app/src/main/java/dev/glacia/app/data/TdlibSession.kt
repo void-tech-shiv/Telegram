@@ -769,18 +769,38 @@ class TdlibSession(private val context: Context) {
         }
     }
 
+    /** Accurate device-local Telegram chat timestamp (no fabricated labels). */
+    private fun chatListTime(unixSeconds: Int): String {
+        if (unixSeconds <= 0) return ""
+        val whenSent = java.time.Instant.ofEpochSecond(unixSeconds.toLong())
+            .atZone(java.time.ZoneId.systemDefault())
+        val today = java.time.LocalDate.now()
+        return when {
+            whenSent.toLocalDate() == today ->
+                whenSent.format(java.time.format.DateTimeFormatter.ofPattern("h:mm a"))
+            whenSent.toLocalDate() == today.minusDays(1) -> "Yesterday"
+            whenSent.toLocalDate().isAfter(today.minusDays(7)) ->
+                whenSent.format(java.time.format.DateTimeFormatter.ofPattern("EEE"))
+            else -> whenSent.format(java.time.format.DateTimeFormatter.ofPattern("d MMM"))
+        }
+    }
+
     private fun emitChats() {
         fun mapChat(chat: TdApi.Chat, archived: Boolean, pinned: Boolean): Chat {
+            fun mediaPreview(kind: String, caption: TdApi.FormattedText?): String {
+                val text = ChatPreviewPrivacy.safePreview(caption?.text.orEmpty())
+                return if (text.isBlank()) kind else "$kind · $text"
+            }
             val preview = when (val content = chat.lastMessage?.content) {
                 is TdApi.MessageText -> ChatPreviewPrivacy.safePreview(content.text?.text.orEmpty())
-                is TdApi.MessagePhoto -> "📷 Photo"
-                is TdApi.MessageVideo -> "🎥 Video"
+                is TdApi.MessagePhoto -> mediaPreview("📷 Photo", content.caption)
+                is TdApi.MessageVideo -> mediaPreview("🎥 Video", content.caption)
                 is TdApi.MessageVoiceNote -> "🎤 Voice note"
                 is TdApi.MessageVideoNote -> "🎬 Video note"
-                is TdApi.MessageAudio -> "🎵 Audio"
-                is TdApi.MessageDocument -> "📄 Document"
-                is TdApi.MessageSticker -> "🎨 Sticker"
-                is TdApi.MessageAnimation -> "🎞 GIF"
+                is TdApi.MessageAudio -> mediaPreview("🎵 Audio", content.caption)
+                is TdApi.MessageDocument -> mediaPreview("📄 Document", content.caption)
+                is TdApi.MessageSticker -> "🎨 Sticker ${content.sticker?.emoji.orEmpty()}"
+                is TdApi.MessageAnimation -> mediaPreview("🎞 GIF", content.caption)
                 is TdApi.MessagePoll -> "📊 Poll"
                 is TdApi.MessageLocation -> "📍 Location"
                 is TdApi.MessageCall -> if (content.isVideo) "📹 Video call" else "📞 Voice call"
@@ -794,7 +814,7 @@ class TdlibSession(private val context: Context) {
                 title = fallbackChatTitle(chat),
                 username = "",
                 preview = preview,
-                time = "",
+                time = chatListTime(chat.lastMessage?.date ?: 0),
                 unread = chat.unreadCount,
                 isGroup = chat.type is TdApi.ChatTypeBasicGroup ||
                     chat.type is TdApi.ChatTypeSupergroup,
