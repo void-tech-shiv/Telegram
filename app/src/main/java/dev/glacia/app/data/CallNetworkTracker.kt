@@ -7,14 +7,12 @@ import android.net.NetworkCapabilities
 import android.util.Log
 
 /**
- * Android's active DEFAULT network observer for an ongoing 1:1 call.
- * It never restarts/dials a call, binds sockets, handles ICE credentials,
- * logs addresses, or keeps a process alive. Registration exists only while
- * the call exists and is removed on hangup/logout.
+ * Android's default network observer for an ongoing 1:1 call. Purely read-only:
+ * no socket binding, ICE restart, re-dial, polling or location/network IDs in logs.
  *
- * Android docs: avoid synchronous network queries inside callbacks.
- * onAvailable can precede capabilities and stale onLost can arrive after
- * a replacement network is already current.
+ * Android callbacks may arrive out of order and after unregister. A fresh
+ * callback object + generation for each call avoids previous-call events
+ * leaking into the next call's status.
  */
 internal class CallNetworkTracker(
     context: Context,
@@ -25,18 +23,21 @@ internal class CallNetworkTracker(
             as ConnectivityManager
     private val lock = Any()
     private var active = false
+    private var generation = 0L
     private var state = CallNetworkState()
+    private var callback: ConnectivityManager.NetworkCallback? = null
 
-    private val callback = object : ConnectivityManager.NetworkCallback() {
+    private fun makeCallback(epoch: Long) = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
-            publish { CallNetworkReducer.available(it, network.networkHandle) }
+            publish(epoch) { CallNetworkReducer.available(it, network.networkHandle) }
         }
 
         override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
-            publish {
+            // Capabilities in callback arguments are more reliable than
+            // querying ConnectivityManager synchronously from callbacks.
+            publish(epoch) {
                 CallNetworkReducer.capabilities(
-                    it,
-                    network.networkHandle,
+                    it, network.networkHandle,
                     capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET),
                     capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
                     capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI),
@@ -46,14 +47,14 @@ internal class CallNetworkTracker(
         }
 
         override fun onLost(network: Network) {
-            publish { CallNetworkReducer.lost(it, network.networkHandle) }
+            publish(epoch) { CallNetworkReducer.lost(it, network.networkHandle) }
         }
     }
 
-    private fun publish(update: (CallNetworkState) -> CallNetworkState) {
+    private fun publish(epoch: Long, update: (CallNetworkState) -> CallNetworkState) {
         val next: CallNetworkState
         synchronized(lock) {
-            if (!active) return
+            if (!active || generation != epoch) return
             next = update(state)
             if (next == state) return
             state = next
@@ -65,12 +66,18 @@ internal class CallNetworkTracker(
         synchronized(lock) {
             if (active) return
             active = true
+            generation++
             state = CallNetworkState()
             onChanged(state)
+            val nextCallback = makeCallback(generation)
             try {
-                connectivity.registerDefaultNetworkCallback(callback)
+                // Serialize registration with stop() so the callback cannot
+                // be registered after an almost-simultaneous unregister.
+                connectivity.registerDefaultNetworkCallback(nextCallback)
+                callback = nextCallback
             } catch (error: RuntimeException) {
                 active = false
+                generation++
                 Log.w("GLACIA-VoIP", "network_observer_unavailable type=${error.javaClass.simpleName}")
                 onChanged(CallNetworkState(null, CallNetworkCondition.LIMITED))
             }
@@ -81,12 +88,16 @@ internal class CallNetworkTracker(
         synchronized(lock) {
             if (!active) return
             active = false
+            generation++
             state = CallNetworkState()
-            try {
-                connectivity.unregisterNetworkCallback(callback)
-            } catch (_: RuntimeException) {
-                // Already unregistered/permission revoked; no impact to call.
+            callback?.let { registered ->
+                try {
+                    connectivity.unregisterNetworkCallback(registered)
+                } catch (_: RuntimeException) {
+                    // Already released or permission changed: not fatal.
+                }
             }
+            callback = null
         }
     }
 }
