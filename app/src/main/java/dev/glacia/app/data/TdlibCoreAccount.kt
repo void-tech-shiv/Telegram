@@ -71,8 +71,11 @@ class TdlibCoreAccount(
         }
         val epoch: Long
         synchronized(lock) {
-            epoch = generation
-            _state.value = _state.value.copy(contactsLoading = true, notice = null)
+            epoch = ++generation
+            _state.value = _state.value.copy(
+                contactsLoading = true,
+                notice = _state.value.notice?.takeIf { it == "Telegram profile updated." }
+            )
         }
         active.send(TdApi.GetMe()) { response ->
             if (response is TdApi.User) {
@@ -114,6 +117,7 @@ class TdlibCoreAccount(
                 publishContacts()
                 _state.value = _state.value.copy(contactsLoading = ids.isNotEmpty())
             }
+            var pending = ids?.size ?: 0
             ids?.forEach { id ->
                 active.send(TdApi.GetUser(id)) { user ->
                     synchronized(lock) {
@@ -122,9 +126,10 @@ class TdlibCoreAccount(
                             users[id] = model(user)
                             publishContacts()
                         }
-                        // A single failed contact must not prevent the list
-                        // becoming usable; results continue to arrive async.
-                        if (users.keys.containsAll(contactIds)) {
+                        // Even one missing/inaccessible contact cannot leave
+                        // the spinner stuck forever.
+                        pending--
+                        if (pending <= 0) {
                             _state.value = _state.value.copy(contactsLoading = false)
                         }
                     }
@@ -174,6 +179,7 @@ class TdlibCoreAccount(
         }
         // Telegram is authoritative. Refresh only after both requests succeed.
         active.send(TdApi.SetName(firstSafe, lastSafe)) { result ->
+            synchronized(lock) { if (epoch != generation) return@send }
             if (result is TdApi.Error) {
                 synchronized(lock) {
                     if (epoch == generation) _state.value = _state.value.copy(
