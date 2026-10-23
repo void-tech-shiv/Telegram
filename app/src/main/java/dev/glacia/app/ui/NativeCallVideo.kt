@@ -62,7 +62,12 @@ private fun renderRemoteFrame(renderer: SurfaceViewRenderer, native: Frame) {
     val u = bytes.duplicate().apply { position(ySize); limit(ySize + cSize) }.slice()
     val v = bytes.duplicate().apply { position(ySize + cSize); limit(size) }.slice()
     val image = JavaI420Buffer.wrap(w, h, y, w, u, w / 2, v, w / 2) { }
-    val rotated = ((info.rotation % 360) + 360) % 360
+    val rotated = when {
+        info.rotation.name.endsWith("270") -> 270
+        info.rotation.name.endsWith("180") -> 180
+        info.rotation.name.endsWith("90") -> 90
+        else -> 0
+    }
     val frame = VideoFrame(image, rotated, info.absolute_capture_timestamp_ms * 1_000_000L)
     renderer.onFrame(frame)
     frame.release()
