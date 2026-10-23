@@ -2,7 +2,7 @@ package dev.glacia.app.data
 
 import android.content.Context
 import dev.glacia.app.BuildConfig
-import io.github.pytgcalls.media.Frame
+import io.github.pytgcalls.models.Frame
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
