@@ -31,6 +31,7 @@ import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.NotificationsActive
+import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.animateColorAsState
@@ -314,6 +315,17 @@ private fun GlaciaApp(
                                 color = if (typingNow) accent(dark) else mutedInk(dark),
                                 fontSize = 11.sp
                             )
+                        }
+                        if (!current.isGroup) {
+                            IconButton(onClick = {
+                                session.openCallContact(current.id)
+                            }) {
+                                Icon(
+                                    Icons.Rounded.Call,
+                                    "Open contact in Telegram for voice/video call",
+                                    tint = accent(dark)
+                                )
+                            }
                         }
                         val muted = chatMuteStates[current.id] == true
                         IconButton(
