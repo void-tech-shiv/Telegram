@@ -50,7 +50,7 @@ Independent Android Telegram client developed in **Kotlin + Jetpack Compose + TD
 cd D:\telegram\Telegram
 git fetch origin
 git switch --track origin/feature/phase-3-9-native-media-bootstrap
-.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest -Pglacia.experimentalNativeCalls=true
+.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest "-Pglacia.experimentalNativeCalls=true"
 ```
 
 If you already have the branch, switch to it and pull `--ff-only`. Keep `telegram.apiId` and `telegram.apiHash` in root `local.properties`; don't commit credentials. Run the locally built APK over the existing GLACIA installation to retain your TDLib login data. Public CI APK cannot sign in because it contains placeholder credentials.
