@@ -75,8 +75,10 @@ class NativeCallController(
                                 prior != null && prior.phase != "Connected" &&
                                 prior.phase != "Incoming" && prior.phase != "Ringing…"
                             ) {
-                                _notice.value = "Call ended during setup. " +
-                                    "Check the GLACIA-VoIP diagnostic in Android Studio Logcat."
+                                if (_notice.value == null) {
+                                    _notice.value = "Call ended during setup. " +
+                                        "Check the GLACIA-VoIP diagnostic in Android Studio Logcat."
+                                }
                                 Log.i("GLACIA-VoIP", "tdlib_call_ended_during_setup")
                             }
                             generation++
