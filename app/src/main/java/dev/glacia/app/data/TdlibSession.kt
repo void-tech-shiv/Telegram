@@ -40,6 +40,8 @@ class TdlibSession(private val context: Context) {
     private var client: Client? = null
     private val fileStore = TdlibFileStore { client }
     val filePaths = fileStore.paths
+    val documentTransfers = fileStore.transfers
+    fun requestDocumentDownload(fileId: Int) = fileStore.requestDocument(fileId)
     private val messaging = TdlibMessages({ client }, fileStore)
     val messages = messaging.messages
     val historyLoading = messaging.loading
