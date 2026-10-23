@@ -248,6 +248,11 @@ class TdlibSession(private val context: Context) {
     val documentTransfers = fileStore.transfers
     fun requestDocumentDownload(fileId: Int) = fileStore.requestDocument(fileId)
     private val messaging = TdlibMessages({ client }, fileStore)
+    private val expressions = TdlibExpressions({ client }, fileStore, messaging)
+    val expressionState = expressions.state
+    fun loadExpressions() = expressions.load()
+    fun sendExpression(chatId: Long, item: ExpressionOption, replyTo: Long? = null) =
+        expressions.send(chatId, item, replyTo)
     private val messageSearch = TdlibMessageSearch { client }
     val chatSearchResults = messageSearch.results
     fun searchChatMessages(chatId: Long, query: String, more: Boolean = false) =
@@ -610,6 +615,7 @@ class TdlibSession(private val context: Context) {
             }
             is TdApi.AuthorizationStateClosed -> {
                 messaging.clear()
+                expressions.clear()
                 messageSearch.clearAll()
                 messageActions.clear()
                 callInbox.clear()
@@ -731,6 +737,7 @@ class TdlibSession(private val context: Context) {
     fun close() {
         typing.clear()
         messageSearch.clearAll()
+        expressions.clear()
         callInbox.clear()
         nativeCalls.clear()
         incomingCallAlerts.clear()

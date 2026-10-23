@@ -2,7 +2,20 @@
 
 Independent Android Telegram client developed in **Kotlin + Jetpack Compose + TDLib**. Midnight Glass and Frosted Daylight themes, TDLib Telegram session, real chats/messaging, images/documents, Media3 video/voice playback, Discover search, unread filters, read receipts and typing indicators.
 
-## Experimental bugfix: v0.3.19 (Telegram reaction 400)
+## Experimental developer build: v0.3.20 (Phase 3.14 — stickers / GIFs)
+
+**Branch:** `feature/phase-3-14-stickers-gifs` · **Status:** draft, phone QA required.
+
+- Real TDLib recent-sticker and saved-GIF picker in conversations;
+  explicitly send a chosen sticker or saved GIF without any new server.
+- Incoming static WEBP stickers display previews; TGS/video stickers use
+  a safe thumbnail fallback. GIF messages show preview with explicit
+  Download/Play; no auto-download of original GIFs.
+- The existing Telegram reaction 400 fix, calling engine and background
+  notifications remain intact. Sticker catalog search and animated custom
+  emoji are **not yet implemented**; see `docs/PHASE3_14.md`.
+
+## Previous experimental bugfix: v0.3.19 (Telegram reaction 400)
 
 **Branch:** `fix/reaction-eligibility-telegram-400` · **Status:** draft PR #24; Android-device QA required.
 

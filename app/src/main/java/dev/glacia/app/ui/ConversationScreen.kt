@@ -33,6 +33,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.EmojiEmotions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -55,6 +56,8 @@ import dev.glacia.app.data.DocumentKind
 import dev.glacia.app.data.FileTransfer
 import dev.glacia.app.data.Chat
 import dev.glacia.app.data.ChatSearchState
+import dev.glacia.app.data.ExpressionState
+import dev.glacia.app.data.ExpressionOption
 import dev.glacia.app.data.Message
 import dev.glacia.app.data.MessageActionPermissions
 import dev.glacia.app.data.DeliveryReceipts
@@ -129,6 +132,9 @@ fun ConversationScreen(
     forwardTargets: List<Chat>,
     onAttachment: (android.net.Uri) -> Unit,
     onVoice: (RecordedVoice) -> Unit,
+    expressions: ExpressionState,
+    onRefreshExpressions: () -> Unit,
+    onSendExpression: (ExpressionOption, Long?) -> Unit,
     mediaBusy: Boolean,
     onLoadMore: () -> Unit,
     searchState: ChatSearchState?,
@@ -148,6 +154,7 @@ fun ConversationScreen(
     var draft by rememberSaveable(chat.id) { mutableStateOf("") }
     var selectedMessage by remember(chat.id) { mutableStateOf<Message?>(null) }
     var showingSearch by rememberSaveable(chat.id) { mutableStateOf(false) }
+    var showingExpressions by remember(chat.id) { mutableStateOf(false) }
     var searchText by rememberSaveable(chat.id) { mutableStateOf("") }
     var pendingJumpId by remember(chat.id) { mutableStateOf<Long?>(null) }
     var replyingTo by remember(chat.id) { mutableStateOf<Message?>(null) }
@@ -361,6 +368,22 @@ fun ConversationScreen(
             }
         }
     }
+    if (showingExpressions) {
+        GlaciaExpressionsPicker(
+            state = expressions,
+            filePaths = filePaths,
+            dark = dark,
+            onReload = onRefreshExpressions,
+            onSend = { item ->
+                if (active && !mediaBusy) {
+                    onSendExpression(item, replyingTo?.id)
+                    replyingTo = null
+                    showingExpressions = false
+                }
+            },
+            onDismiss = { showingExpressions = false }
+        )
+    }
     selectedMessage?.let { message ->
         GlaciaMessageActionDialog(
             message = message,
@@ -447,7 +470,9 @@ fun ConversationScreen(
                         horizontalArrangement =
                             if (msg.outgoing) Arrangement.End else Arrangement.Start
                     ) {
-                        val isVisual = msg.mediaType == "photo" || msg.mediaType == "video"
+                        val isVisual = msg.mediaType in setOf(
+                            "photo", "video", "sticker", "animation"
+                        )
                         val imageDocument = msg.mediaType == "document" &&
                             DocumentKind.isImage(msg.attachmentMime, msg.attachmentName)
                         val bubbleShape = RoundedCornerShape(
@@ -513,7 +538,7 @@ fun ConversationScreen(
                                         { imageViewer = thumbnailPath }
                                     } else null
                                 )
-                                if (msg.mediaType == "video") {
+                                if (msg.mediaType == "video" || msg.mediaType == "animation") {
                                     Row(
                                         Modifier.padding(top = 7.dp)
                                             .clip(RoundedCornerShape(12.dp))
@@ -528,7 +553,8 @@ fun ConversationScreen(
                                             modifier = Modifier.size(15.dp)
                                         )
                                         Spacer(Modifier.width(4.dp))
-                                        Text("Video thumbnail", color = foreground, fontSize = 10.sp)
+                                        Text(if (msg.mediaType == "animation") "GIF preview"
+                                            else "Video thumbnail", color = foreground, fontSize = 10.sp)
                                     }
                                 }
                                 Spacer(Modifier.height(7.dp))
@@ -541,13 +567,14 @@ fun ConversationScreen(
                                 Spacer(Modifier.height(5.dp))
                             }
                             if (msg.mediaType == "video" ||
+                                msg.mediaType == "animation" ||
                                 msg.mediaType == "voice" ||
                                 msg.mediaType == "audio"
                             ) {
                                 val originalId = msg.playbackFileId
                                 val originalPath = originalId?.let(filePaths::get)
                                 val transfer = originalId?.let(documentTransfers::get)
-                                val video = msg.mediaType == "video"
+                                val video = msg.mediaType == "video" || msg.mediaType == "animation"
                                 if (!video) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Icon(
@@ -597,7 +624,7 @@ fun ConversationScreen(
                                             Text(
                                                 when {
                                                     originalPath != null ->
-                                                        if (video) "Play video" else "Play audio"
+                                                        if (video) "Play video/GIF" else "Play audio"
                                                     transfer?.downloading == true -> {
                                                         val total = transfer.totalBytes
                                                         if (total > 0L)
@@ -605,7 +632,7 @@ fun ConversationScreen(
                                                         else "Downloading…"
                                                     }
                                                     transfer?.error != null -> "Retry download"
-                                                    else -> if (video) "Download video" else "Download audio"
+                                                    else -> if (video) "Download video/GIF" else "Download audio"
                                                 },
                                                 color = highlight
                                             )
@@ -728,6 +755,9 @@ fun ConversationScreen(
                                         .removePrefix(" · ").trim()
                                     "video" -> msg.text.removePrefix("🎥 Video")
                                         .removePrefix(" · ").trim()
+                                    "animation" -> msg.text.removePrefix("🎞 GIF")
+                                        .removePrefix(" · ").trim()
+                                    "sticker" -> if (thumbnailPath != null) "" else msg.text
                                     else -> msg.text
                                 }
                                 if (displayText.isNotEmpty()) {
@@ -864,7 +894,22 @@ fun ConversationScreen(
             ) {
                 Icon(Icons.Rounded.AttachFile, "Send photo, video or document", tint = highlight)
             }
-            Spacer(Modifier.width(5.dp))
+            Spacer(Modifier.width(3.dp))
+            IconButton(
+                enabled = active && !mediaBusy && !recording,
+                onClick = {
+                    onRefreshExpressions()
+                    showingExpressions = true
+                },
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(
+                    Icons.Rounded.EmojiEmotions,
+                    contentDescription = "Recent stickers and saved GIFs",
+                    tint = highlight
+                )
+            }
+            Spacer(Modifier.width(4.dp))
             if (recording) {
                 Text(
                     "● REC ${recordSeconds}s",
