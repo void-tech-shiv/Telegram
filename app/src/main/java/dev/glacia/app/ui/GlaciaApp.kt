@@ -333,7 +333,7 @@ private fun Avatar(name: String, id: Long, modifier: Modifier = Modifier) {
         listOf(Color(0xFF447AD5), Color(0xFF7F98F7))
     )
     Box(
-        modifier.clip(CircleShape).background(Brush.linearGradient(tones[((id - 1) % tones.size).toInt()])),
+        modifier.clip(CircleShape).background(Brush.linearGradient(tones[Math.floorMod(id, tones.size)])),
         contentAlignment = Alignment.Center
     ) {
         Text(name.split(" ").take(2).mapNotNull { it.firstOrNull()?.toString() }
