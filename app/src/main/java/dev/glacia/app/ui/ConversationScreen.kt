@@ -17,6 +17,8 @@ import androidx.compose.material.icons.rounded.Send
 import androidx.compose.material.icons.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -103,6 +105,7 @@ fun ConversationScreen(
     val timelineState = rememberLazyListState()
     val saveDocument = rememberSaveDocument()
     var imageViewer by remember { mutableStateOf<String?>(null) }
+    var playingMedia by remember { mutableStateOf<Triple<String, Boolean, Int>?>(null) }
     var newestSeen by remember(chat.id) { mutableLongStateOf(Long.MIN_VALUE) }
     var draft by rememberSaveable(chat.id) { mutableStateOf("") }
 
@@ -120,6 +123,10 @@ fun ConversationScreen(
             onSend(text)
             draft = ""
         }
+    }
+
+    playingMedia?.let { (path, isVideo, seconds) ->
+        GlaciaPlaybackDialog(path, isVideo, seconds, dark) { playingMedia = null }
     }
 
     imageViewer?.let { imagePath ->
@@ -238,6 +245,84 @@ fun ConversationScreen(
                                 )
                                 Spacer(Modifier.height(5.dp))
                             }
+                            if (msg.mediaType == "video" ||
+                                msg.mediaType == "voice" ||
+                                msg.mediaType == "audio"
+                            ) {
+                                val originalId = msg.playbackFileId
+                                val originalPath = originalId?.let(filePaths::get)
+                                val transfer = originalId?.let(documentTransfers::get)
+                                val video = msg.mediaType == "video"
+                                if (!video) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            Icons.Rounded.Mic,
+                                            contentDescription = null,
+                                            tint = highlight,
+                                            modifier = Modifier.size(23.dp)
+                                        )
+                                        Spacer(Modifier.width(7.dp))
+                                        Text(
+                                            if (msg.mediaType == "voice") "Voice message"
+                                            else "Audio",
+                                            color = foreground,
+                                            fontSize = 14.sp
+                                        )
+                                    }
+                                }
+                                if (originalId != null) {
+                                    Row(
+                                        Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.End,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        TextButton(
+                                            onClick = {
+                                                if (originalPath != null) {
+                                                    playingMedia = Triple(
+                                                        originalPath,
+                                                        video,
+                                                        msg.playbackDurationSeconds
+                                                    )
+                                                } else {
+                                                    onDownloadDocument(originalId)
+                                                }
+                                            },
+                                            enabled = originalPath != null ||
+                                                transfer?.downloading != true
+                                        ) {
+                                            Icon(
+                                                if (originalPath != null) Icons.Rounded.PlayArrow
+                                                else Icons.Rounded.Download,
+                                                contentDescription = null,
+                                                tint = highlight,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(Modifier.width(5.dp))
+                                            Text(
+                                                when {
+                                                    originalPath != null ->
+                                                        if (video) "Play video" else "Play audio"
+                                                    transfer?.downloading == true -> {
+                                                        val total = transfer.totalBytes
+                                                        if (total > 0L)
+                                                            "Downloading ${(transfer.downloadedBytes * 100L / total).coerceIn(0L, 100L)}%"
+                                                        else "Downloading…"
+                                                    }
+                                                    transfer?.error != null -> "Retry download"
+                                                    else -> if (video) "Download video" else "Download audio"
+                                                },
+                                                color = highlight
+                                            )
+                                        }
+                                    }
+                                    if (transfer?.error != null) {
+                                        Text(transfer.error, color = secondary, fontSize = 11.sp)
+                                    }
+                                } else {
+                                    Text("Media unavailable", color = secondary, fontSize = 12.sp)
+                                }
+                            }
                             if (msg.mediaType == "document") {
                                 val attachmentId = msg.attachmentFileId
                                 val downloadedPath = attachmentId?.let(filePaths::get)
@@ -339,7 +424,7 @@ fun ConversationScreen(
                                         }
                                     }
                                 }
-                            } else {
+                            } else if (msg.mediaType != "voice" && msg.mediaType != "audio") {
                                 Text(
                                     msg.text,
                                     color = foreground,

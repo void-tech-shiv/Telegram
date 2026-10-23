@@ -20,8 +20,8 @@ android {
         applicationId = "dev.glacia.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 5
-        versionName = "0.3.2"
+        versionCode = 6
+        versionName = "0.3.3"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("int", "TELEGRAM_API_ID", "$telegramApiId")
         buildConfigField("String", "TELEGRAM_API_HASH", "\"$telegramApiHash\"")
@@ -63,5 +63,8 @@ dependencies {
     implementation("dev.chrisbanes.haze:haze-glass:2.0.1")
     implementation("io.github.tdlib-android:core:0.1.1")
     implementation("io.coil-kt.coil3:coil-compose:3.6.3")
+    implementation("androidx.media3:media3-exoplayer:1.11.1")
+    implementation("androidx.media3:media3-ui:1.11.1")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
     testImplementation("junit:junit:4.13.2")
 }

@@ -135,13 +135,17 @@ class TdlibMessages(
                             val attachment = (update.newContent as? TdApi.MessageDocument)?.document
                             files.ensure(thumbnail)
                             files.observeExisting(attachment?.document)
+                            val originalPlayback = originalPlaybackFile(update.newContent)
+                            files.observeExisting(originalPlayback)
                             it.copy(
                                 text = displayContent(update.newContent),
                                 mediaType = mediaType(update.newContent),
                                 mediaFileId = thumbnail?.id,
                                 attachmentFileId = attachment?.document?.id,
                                 attachmentName = attachment?.fileName,
-                                attachmentMime = attachment?.mimeType
+                                attachmentMime = attachment?.mimeType,
+                                playbackFileId = originalPlayback?.id,
+                                playbackDurationSeconds = playbackDuration(update.newContent)
                             )
                         } else it
                     }
@@ -158,6 +162,8 @@ class TdlibMessages(
         val attachment = (message.content as? TdApi.MessageDocument)?.document
         files.ensure(thumbnail)
         files.observeExisting(attachment?.document)
+        val originalPlayback = originalPlaybackFile(message.content)
+        files.observeExisting(originalPlayback)
         val clock = if (message.date > 0)
             DateFormat.getTimeInstance(DateFormat.SHORT, Locale.getDefault())
                 .format(Date(message.date.toLong() * 1000L))
@@ -175,15 +181,33 @@ class TdlibMessages(
             mediaFileId = thumbnail?.id,
             attachmentFileId = attachment?.document?.id,
             attachmentName = attachment?.fileName,
-            attachmentMime = attachment?.mimeType
+            attachmentMime = attachment?.mimeType,
+            playbackFileId = originalPlayback?.id,
+            playbackDurationSeconds = playbackDuration(message.content)
         )
     }
 
     private fun mediaType(content: TdApi.MessageContent?): String? = when (content) {
         is TdApi.MessagePhoto -> "photo"
         is TdApi.MessageVideo -> "video"
+        is TdApi.MessageVoiceNote -> "voice"
+        is TdApi.MessageAudio -> "audio"
         is TdApi.MessageDocument -> "document"
         else -> null
+    }
+
+    private fun originalPlaybackFile(content: TdApi.MessageContent?): TdApi.File? = when (content) {
+        is TdApi.MessageVideo -> content.video?.video
+        is TdApi.MessageVoiceNote -> content.voiceNote?.voice
+        is TdApi.MessageAudio -> content.audio?.audio
+        else -> null
+    }
+
+    private fun playbackDuration(content: TdApi.MessageContent?): Int = when (content) {
+        is TdApi.MessageVideo -> content.video?.duration ?: 0
+        is TdApi.MessageVoiceNote -> content.voiceNote?.duration ?: 0
+        is TdApi.MessageAudio -> content.audio?.duration ?: 0
+        else -> 0
     }
 
     /** Prefer an economical medium-sized thumbnail, never full-resolution automatic downloads. */

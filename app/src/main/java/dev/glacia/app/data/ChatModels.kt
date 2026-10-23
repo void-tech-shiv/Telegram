@@ -26,7 +26,9 @@ data class Message(
     val mediaFileId: Int? = null,
     val attachmentFileId: Int? = null,
     val attachmentName: String? = null,
-    val attachmentMime: String? = null
+    val attachmentMime: String? = null,
+    val playbackFileId: Int? = null,
+    val playbackDurationSeconds: Int = 0
 )
 
 interface ChatRepository {
