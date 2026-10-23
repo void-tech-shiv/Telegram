@@ -80,7 +80,8 @@ class TdlibDiscovery(
                             },
                             time = "",
                             unread = obj.unreadCount,
-                            isGroup = obj.type !is TdApi.ChatTypePrivate,
+                            isGroup = obj.type is TdApi.ChatTypeBasicGroup ||
+                                obj.type is TdApi.ChatTypeSupergroup,
                             photoFileId = obj.photo?.small?.id
                         )
                         synchronized(lock) {
