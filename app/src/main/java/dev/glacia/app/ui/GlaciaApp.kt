@@ -34,6 +34,7 @@ import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material.icons.rounded.NotificationsOff
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.material3.*
@@ -219,6 +220,10 @@ private fun GlaciaApp(
     var query by rememberSaveable { mutableStateOf("") }
     var discoverQuery by rememberSaveable { mutableStateOf("") }
     var chatFilter by rememberSaveable { mutableStateOf(ChatFilter.ALL) }
+    var viewingArchive by rememberSaveable { mutableStateOf(false) }
+    val archivedChats by session.archivedChats.collectAsState()
+    val chatActionBusy by session.chatActionBusy.collectAsState()
+    val chatActionError by session.chatActionError.collectAsState()
     val discovered by session.discoveryResults.collectAsState()
     val discovering by session.discoveryLoading.collectAsState()
     val discoveryError by session.discoveryError.collectAsState()
@@ -235,7 +240,7 @@ private fun GlaciaApp(
             onNotificationChatHandled(id)
         }
     }
-    val current = (liveChats + discovered + listOfNotNull(notificationTarget))
+    val current = (liveChats + archivedChats + discovered + listOfNotNull(notificationTarget))
         .firstOrNull { it.id == openChatId }
     var callHandoffPrompt by remember(current?.id) { mutableStateOf(false) }
 
@@ -585,12 +590,25 @@ private fun GlaciaApp(
                 } else {
                     when (tab) {
                         "Chats" -> ChatList(
-                            chats = liveChats,
+                            chats = if (viewingArchive) archivedChats else liveChats,
                             photoPaths = photoPaths,
                             query = query,
                             onQuery = { query = it },
                             selectedFilter = chatFilter,
                             onFilter = { chatFilter = it },
+                            archivedCount = archivedChats.size,
+                            viewingArchive = viewingArchive,
+                            onArchiveViewChange = {
+                                viewingArchive = it
+                                chatFilter = ChatFilter.ALL
+                                query = ""
+                                if (it) session.loadArchivedChats()
+                            },
+                            busyChats = chatActionBusy,
+                            actionError = chatActionError,
+                            onDismissActionError = session::dismissChatActionError,
+                            onTogglePin = session::toggleChatPinned,
+                            onToggleArchive = { id, archive -> session.setChatArchived(id, archive) },
                             dark = dark,
                             onOpen = { openChatId = it.id }
                         )
@@ -687,6 +705,14 @@ private fun ChatList(
     onQuery: (String) -> Unit,
     selectedFilter: ChatFilter,
     onFilter: (ChatFilter) -> Unit,
+    archivedCount: Int,
+    viewingArchive: Boolean,
+    onArchiveViewChange: (Boolean) -> Unit,
+    busyChats: Set<Long>,
+    actionError: String?,
+    onDismissActionError: () -> Unit,
+    onTogglePin: (Long) -> Unit,
+    onToggleArchive: (Long, Boolean) -> Unit,
     dark: Boolean,
     onOpen: (Chat) -> Unit
 ) {
@@ -700,8 +726,8 @@ private fun ChatList(
     ) {
         item {
             Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp)) {
-                Text("Your conversations", fontSize = 26.sp,
-                    fontWeight = FontWeight.Bold, color = ink(dark), maxLines = 2)
+                Text(if (viewingArchive) "Archived conversations" else "Your conversations",
+                    fontSize = 26.sp, fontWeight = FontWeight.Bold, color = ink(dark), maxLines = 2)
                 Spacer(Modifier.height(5.dp))
                 Text("All your chats, with a little more magic.",
                     fontSize = 13.sp, color = mutedInk(dark))
@@ -735,6 +761,26 @@ private fun ChatList(
                     }
                 }
                 Spacer(Modifier.height(14.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = !viewingArchive,
+                        onClick = { onArchiveViewChange(false) },
+                        label = { Text("Main") }
+                    )
+                    FilterChip(
+                        selected = viewingArchive,
+                        onClick = { onArchiveViewChange(true) },
+                        label = { Text("Archived ($archivedCount)") }
+                    )
+                }
+                actionError?.let { error ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(error, color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.weight(1f), fontSize = 12.sp)
+                        TextButton(onClick = onDismissActionError) { Text("Dismiss") }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
                 Row(
                     Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -777,6 +823,9 @@ private fun ChatList(
                     Text(chat.preview, color = mutedInk(dark), fontSize = 12.sp,
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
+                if (chat.pinned) {
+                    Text("📌", fontSize = 12.sp, modifier = Modifier.padding(start = 4.dp))
+                }
                 if (chat.unread > 0) {
                     Spacer(Modifier.width(8.dp))
                     Box(
@@ -787,6 +836,22 @@ private fun ChatList(
                         Text(chat.unread.coerceAtMost(99).toString(), fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (dark) Color(0xFF13223B) else Color.White)
+                    }
+                }
+                var menuOpen by remember(chat.id) { mutableStateOf(false) }
+                Box {
+                    IconButton(onClick = { menuOpen = true }, enabled = chat.id !in busyChats) {
+                        Icon(Icons.Rounded.MoreVert, "Chat actions", tint = mutedInk(dark))
+                    }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DropdownMenuItem(
+                            text = { Text(if (chat.pinned) "Unpin chat" else "Pin chat") },
+                            onClick = { menuOpen = false; onTogglePin(chat.id) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(if (chat.archived) "Unarchive chat" else "Archive chat") },
+                            onClick = { menuOpen = false; onToggleArchive(chat.id, !chat.archived) }
+                        )
                     }
                 }
             }
