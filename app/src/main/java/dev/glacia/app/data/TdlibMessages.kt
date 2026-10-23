@@ -277,6 +277,7 @@ class TdlibMessages(
         is TdApi.MessagePoll -> "📊 Poll"
         is TdApi.MessageLocation -> "📍 Location"
         is TdApi.MessageContact -> "👤 Contact"
+        is TdApi.MessageCall -> if (content.isVideo) "📹 Video call" else "📞 Voice call"
         else -> "Unsupported message type"
     }
 }
