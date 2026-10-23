@@ -78,7 +78,7 @@ fun GlaciaRoot() {
 private fun ink(dark: Boolean) = if (dark) Color(0xFFF3F6FF) else Color(0xFF17213A)
 private fun mutedInk(dark: Boolean) = if (dark) Color(0xFFB0BDD7) else Color(0xFF56647F)
 private fun accent(dark: Boolean) = if (dark) Color(0xFF9BE4FF) else Color(0xFF4A5DE0)
-private fun tile(dark: Boolean) = if (dark) Color(0xE61A2540) else Color(0xDDEFFFFFF)
+private fun tile(dark: Boolean) = if (dark) Color(0xE61A2540) else Color(0xDDF7FAFF)
 
 @Composable
 private fun GlassPanel(
