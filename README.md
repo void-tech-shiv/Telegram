@@ -2,7 +2,50 @@
 
 Independent Android Telegram client developed in **Kotlin + Jetpack Compose + TDLib**. Midnight Glass and Frosted Daylight themes, TDLib Telegram session, real chats/messaging, images/documents, Media3 video/voice playback, Discover search, unread filters, read receipts and typing indicators.
 
-## Experimental developer build: v0.3.15 (Phase 3.10 — full-screen calling UI)
+## Experimental developer build: v0.3.18 (Phase 3.13 — Telegram feature expansion)
+
+**Branch:** `feature/phase-3-13-chat-management-search` · **Status:** draft, two-account device QA required.
+
+- Added Telegram-synced **Main/Archived** chat views, archive/unarchive
+  and pin/unpin actions with per-chat feedback and safe errors.
+- Added **Search in chat** backed by TDLib, paginated remote history,
+  stale-response protection and tap-to-jump to matching message context.
+- Preserved existing two-way voice/video, Liquid Glass full-screen calls,
+  background audio and notification Hang up. No new native media changes.
+- Telegram has many more features; this is a first parity batch, **not**
+  complete Telegram parity. See `docs/PHASE3_13.md` for feature roadmap,
+  exact Windows commands and the manual device test matrix.
+
+## Previous experimental developer build: v0.3.17 (Phase 3.12 — network awareness)
+
+**Branch:** `feature/phase-3-12-network-awareness` · **Status:** draft / device QA required.
+
+- Real-device validation confirmed that Phase 3.11 background audio continues
+  and the notification **Hang up** action works. Lock-screen tests remain pending.
+- Track Android default network while a real call exists, with safe network
+  transition/loss hints in Liquid Glass calling UI. Clean up observer on call
+  end or logout. Unit tests cover stale event order and Wi-Fi↔mobile changes.
+- **Not seamless WebRTC network recovery:** Android connectivity observation
+  alone does not restart ICE or guarantee two-way audio survives switchovers.
+  The existing TDLib/NTgCalls media implementation is unchanged.
+- See `docs/PHASE3_12.md` for PowerShell checkout/build/install and test matrix.
+
+## Previous experimental developer build: v0.3.16 (Phase 3.11 — ongoing call lifecycle)
+
+**Branch:** `feature/phase-3-11-call-lifecycle` · **Status:** draft, real-device background testing required.
+
+- Existing two-way TDLib/NTgCalls media is preserved. After a **visible user**
+  initiates/answers a call with permissions granted, Android starts a typed
+  microphone/camera foreground service and ongoing notification with Hang up.
+- The service owns the same TDLib process session while the UI backgrounds,
+  rather than opening another database/client. It is not a boot daemon.
+- Incoming-call heads-up alerts are **best effort while TDLib is already
+  alive**; tapping opens GLACIA. Calls after process kill/force-stop, full-screen
+  system incoming UI, automatic push wake and network handover are **NOT guaranteed**.
+- See `docs/PHASE3_11.md` for limitations, Android 14+ permission boundaries
+  and exact PowerShell checkout/build/install + two-device QA.
+
+## Previous experimental developer build: v0.3.15 (Phase 3.10 — full-screen calling UI)
 
 **Branch:** `feature/phase-3-10-liquid-glass-calls` · **Status:** draft PR #18; review before merging.
 
@@ -68,7 +111,7 @@ Independent Android Telegram client developed in **Kotlin + Jetpack Compose + TD
 ```powershell
 cd D:\telegram\Telegram
 git fetch origin
-git switch --track origin/feature/phase-3-10-liquid-glass-calls
+git switch --track origin/feature/phase-3-13-chat-management-search
 .\gradlew.bat :app:assembleDebug :app:testDebugUnitTest "-Pglacia.experimentalNativeCalls=true"
 ```
 

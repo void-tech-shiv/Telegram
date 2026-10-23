@@ -12,6 +12,7 @@ import androidx.compose.ui.unit.dp
 import dev.glacia.app.data.Chat
 import dev.glacia.app.data.Message
 import dev.glacia.app.data.MessageActionPermissions
+import dev.glacia.app.data.MessageReactionPolicy
 
 /** Message actions shown only after Telegram's GetMessageProperties responds. */
 @Composable
@@ -81,28 +82,49 @@ fun GlaciaMessageActionDialog(
                             TextButton(onClick = { mode = "delete" }) { Text("🗑 Delete") }
                         }
                     }
-                    Spacer(Modifier.height(6.dp))
-                    Text("React:", style = MaterialTheme.typography.labelLarge)
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        listOf("👍", "❤️", "😂", "🔥").forEach { emoji ->
-                            val chosen = message.reactions.any { it.emoji == emoji && it.chosen }
+                    // Telegram's GetMessageAvailableReactions is authoritative.
+                    // Never show a guessed reaction grid on call service events.
+                    if (permissions != null) {
+                        Spacer(Modifier.height(8.dp))
+                        if (permissions.reactionChecking) {
                             Text(
-                                emoji,
-                                modifier = Modifier.clickable {
-                                    onReact(emoji, chosen); onDismiss()
-                                }.padding(6.dp)
+                                "Checking allowed reactions…",
+                                style = MaterialTheme.typography.bodySmall
                             )
-                        }
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        listOf("😮", "😢", "👏").forEach { emoji ->
-                            val chosen = message.reactions.any { it.emoji == emoji && it.chosen }
-                            Text(
-                                emoji,
-                                modifier = Modifier.clickable {
-                                    onReact(emoji, chosen); onDismiss()
-                                }.padding(6.dp)
-                            )
+                        } else {
+                            val emojis = if (MessageReactionPolicy.eligibleForLookup(message)) {
+                                MessageReactionPolicy.shownChoices(
+                                    permissions.reactionChoices,
+                                    message.reactions
+                                )
+                            } else emptyList()
+                            if (emojis.isEmpty()) {
+                                Text(
+                                    permissions.reactionNotice
+                                        ?: "Reactions aren't available for this message.",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            } else {
+                                Text("React:", style = MaterialTheme.typography.labelLarge)
+                                emojis.chunked(4).forEach { row ->
+                                    Row(
+                                        Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        row.forEach { emoji ->
+                                            val chosen = message.reactions.any {
+                                                it.emoji == emoji && it.chosen
+                                            }
+                                            TextButton(onClick = {
+                                                onReact(emoji, chosen)
+                                                onDismiss()
+                                            }) {
+                                                Text(emoji)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

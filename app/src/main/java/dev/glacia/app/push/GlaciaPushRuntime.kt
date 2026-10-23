@@ -11,6 +11,7 @@ object GlaciaPushRuntime {
     private var shared: TdlibSession? = null
     private var uiOwners = 0
     private var pushOwners = 0
+    private var callServiceOwners = 0
 
     @Synchronized fun attachUi(context: Context): TdlibSession {
         uiOwners++
@@ -22,7 +23,26 @@ object GlaciaPushRuntime {
 
     @Synchronized fun detachUi(session: TdlibSession) {
         uiOwners = (uiOwners - 1).coerceAtLeast(0)
-        if (uiOwners == 0 && pushOwners == 0 && shared === session) {
+        if (uiOwners == 0 && pushOwners == 0 && callServiceOwners == 0 && shared === session) {
+            session.close()
+            shared = null
+        }
+    }
+
+    /**
+     * An already-user-started foreground call keeps exactly one TDLib client
+     * alive after the UI goes to the background. Never creates a second TDLib
+     * client/database for an ongoing call.
+     */
+    @Synchronized fun attachCallService(context: Context): TdlibSession {
+        callServiceOwners++
+        return get(context)
+    }
+
+    @Synchronized fun detachCallService(session: TdlibSession) {
+        callServiceOwners = (callServiceOwners - 1).coerceAtLeast(0)
+        if (callServiceOwners == 0 && uiOwners == 0 && pushOwners == 0 &&
+            shared === session) {
             session.close()
             shared = null
         }
@@ -40,7 +60,7 @@ object GlaciaPushRuntime {
         } finally {
             synchronized(this) {
                 pushOwners = (pushOwners - 1).coerceAtLeast(0)
-                if (uiOwners == 0 && pushOwners == 0 && shared === session) {
+                if (uiOwners == 0 && pushOwners == 0 && callServiceOwners == 0 && shared === session) {
                     session.close()
                     shared = null
                 }

@@ -34,6 +34,7 @@ import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material.icons.rounded.NotificationsOff
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.material3.*
@@ -68,6 +69,7 @@ import androidx.compose.ui.layout.ContentScale
 import java.io.File
 import dev.glacia.app.data.NotificationHealth
 import dev.glacia.app.BuildConfig
+import dev.glacia.app.calls.GlaciaCallService
 import com.google.firebase.FirebaseApp
 import com.google.firebase.messaging.FirebaseMessaging
 import dev.glacia.app.push.GlaciaPushRuntime
@@ -218,6 +220,10 @@ private fun GlaciaApp(
     var query by rememberSaveable { mutableStateOf("") }
     var discoverQuery by rememberSaveable { mutableStateOf("") }
     var chatFilter by rememberSaveable { mutableStateOf(ChatFilter.ALL) }
+    var viewingArchive by rememberSaveable { mutableStateOf(false) }
+    val archivedChats by session.archivedChats.collectAsState()
+    val chatActionBusy by session.chatActionBusy.collectAsState()
+    val chatActionError by session.chatActionError.collectAsState()
     val discovered by session.discoveryResults.collectAsState()
     val discovering by session.discoveryLoading.collectAsState()
     val discoveryError by session.discoveryError.collectAsState()
@@ -234,7 +240,7 @@ private fun GlaciaApp(
             onNotificationChatHandled(id)
         }
     }
-    val current = (liveChats + discovered + listOfNotNull(notificationTarget))
+    val current = (liveChats + archivedChats + discovered + listOfNotNull(notificationTarget))
         .firstOrNull { it.id == openChatId }
     var callHandoffPrompt by remember(current?.id) { mutableStateOf(false) }
 
@@ -242,14 +248,37 @@ private fun GlaciaApp(
     // No permission grant = no native call (and no remote ringing).
     val deviceContext = LocalContext.current
     var pendingNativeAction by remember { mutableStateOf<Pair<Long, Boolean>?>(null) }
+    var failedForegroundCallStart by remember { mutableStateOf(false) }
+    // Android 14+ requires the camera/mic FGS to start from a visible
+    // activity with currently granted while-in-use permissions.
+    fun startNativeCallWithService(chatId: Long, video: Boolean) {
+        if (!GlaciaCallService.startFromVisibleUi(deviceContext, video)) {
+            failedForegroundCallStart = true
+            return
+        }
+        if (chatId == 0L) session.answerNativeCall()
+        else session.startNativeCall(chatId, video)
+    }
+    if (failedForegroundCallStart) {
+        AlertDialog(
+            onDismissRequest = { failedForegroundCallStart = false },
+            title = { Text("Calling unavailable") },
+            text = {
+                Text("Android could not start the ongoing-call service. Open GLACIA " +
+                    "and check microphone/camera permissions, then try again.")
+            },
+            confirmButton = {
+                TextButton(onClick = { failedForegroundCallStart = false }) { Text("OK") }
+            }
+        )
+    }
     val nativePermissions = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { results ->
         val action = pendingNativeAction
         pendingNativeAction = null
         if (action != null && results.values.all { it } && results.isNotEmpty()) {
-            if (action.first == 0L) session.answerNativeCall()
-            else session.startNativeCall(action.first, action.second)
+            startNativeCallWithService(action.first, action.second)
         }
     }
     fun requestNativeAction(chatId: Long, video: Boolean) {
@@ -261,8 +290,7 @@ private fun GlaciaApp(
                 deviceContext, it
             ) == PackageManager.PERMISSION_GRANTED
         }) {
-            if (chatId == 0L) session.answerNativeCall()
-            else session.startNativeCall(chatId, video)
+            startNativeCallWithService(chatId, video)
         } else {
             pendingNativeAction = chatId to video
             nativePermissions.launch(permissions)
@@ -341,6 +369,7 @@ private fun GlaciaApp(
         onDispose { session.setVisibleChat(null) }
     }
     val messagesByChat by session.messages.collectAsState()
+    val chatSearchResults by session.chatSearchResults.collectAsState()
     val loadingChats by session.historyLoading.collectAsState()
     val documentTransfers by session.documentTransfers.collectAsState()
     val messageErrors by session.messageErrors.collectAsState()
@@ -557,17 +586,38 @@ private fun GlaciaApp(
                             val earliestId = messagesByChat[current.id]?.firstOrNull()?.id ?: 0L
                             session.loadHistory(current.id, earliestId)
                         },
+                        searchState = chatSearchResults[current.id],
+                        onSearchMessages = { term, more ->
+                            session.searchChatMessages(current.id, term, more)
+                        },
+                        onClearSearch = { session.clearChatSearch(current.id) },
+                        onJumpToMessage = { messageId ->
+                            session.loadMessageAround(current.id, messageId)
+                        },
                         onDismissError = { session.dismissMessageError(current.id) }
                     )
                 } else {
                     when (tab) {
                         "Chats" -> ChatList(
-                            chats = liveChats,
+                            chats = if (viewingArchive) archivedChats else liveChats,
                             photoPaths = photoPaths,
                             query = query,
                             onQuery = { query = it },
                             selectedFilter = chatFilter,
                             onFilter = { chatFilter = it },
+                            archivedCount = archivedChats.size,
+                            viewingArchive = viewingArchive,
+                            onArchiveViewChange = {
+                                viewingArchive = it
+                                chatFilter = ChatFilter.ALL
+                                query = ""
+                                if (it) session.loadArchivedChats()
+                            },
+                            busyChats = chatActionBusy,
+                            actionError = chatActionError,
+                            onDismissActionError = session::dismissChatActionError,
+                            onTogglePin = session::toggleChatPinned,
+                            onToggleArchive = { id, archive -> session.setChatArchived(id, archive) },
                             dark = dark,
                             onOpen = { openChatId = it.id }
                         )
@@ -664,6 +714,14 @@ private fun ChatList(
     onQuery: (String) -> Unit,
     selectedFilter: ChatFilter,
     onFilter: (ChatFilter) -> Unit,
+    archivedCount: Int,
+    viewingArchive: Boolean,
+    onArchiveViewChange: (Boolean) -> Unit,
+    busyChats: Set<Long>,
+    actionError: String?,
+    onDismissActionError: () -> Unit,
+    onTogglePin: (Long) -> Unit,
+    onToggleArchive: (Long, Boolean) -> Unit,
     dark: Boolean,
     onOpen: (Chat) -> Unit
 ) {
@@ -677,8 +735,8 @@ private fun ChatList(
     ) {
         item {
             Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp)) {
-                Text("Your conversations", fontSize = 26.sp,
-                    fontWeight = FontWeight.Bold, color = ink(dark), maxLines = 2)
+                Text(if (viewingArchive) "Archived conversations" else "Your conversations",
+                    fontSize = 26.sp, fontWeight = FontWeight.Bold, color = ink(dark), maxLines = 2)
                 Spacer(Modifier.height(5.dp))
                 Text("All your chats, with a little more magic.",
                     fontSize = 13.sp, color = mutedInk(dark))
@@ -712,6 +770,26 @@ private fun ChatList(
                     }
                 }
                 Spacer(Modifier.height(14.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = !viewingArchive,
+                        onClick = { onArchiveViewChange(false) },
+                        label = { Text("Main") }
+                    )
+                    FilterChip(
+                        selected = viewingArchive,
+                        onClick = { onArchiveViewChange(true) },
+                        label = { Text("Archived ($archivedCount)") }
+                    )
+                }
+                actionError?.let { error ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(error, color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.weight(1f), fontSize = 12.sp)
+                        TextButton(onClick = onDismissActionError) { Text("Dismiss") }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
                 Row(
                     Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -754,6 +832,9 @@ private fun ChatList(
                     Text(chat.preview, color = mutedInk(dark), fontSize = 12.sp,
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
+                if (chat.pinned) {
+                    Text("📌", fontSize = 12.sp, modifier = Modifier.padding(start = 4.dp))
+                }
                 if (chat.unread > 0) {
                     Spacer(Modifier.width(8.dp))
                     Box(
@@ -764,6 +845,22 @@ private fun ChatList(
                         Text(chat.unread.coerceAtMost(99).toString(), fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (dark) Color(0xFF13223B) else Color.White)
+                    }
+                }
+                var menuOpen by remember(chat.id) { mutableStateOf(false) }
+                Box {
+                    IconButton(onClick = { menuOpen = true }, enabled = chat.id !in busyChats) {
+                        Icon(Icons.Rounded.MoreVert, "Chat actions", tint = mutedInk(dark))
+                    }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DropdownMenuItem(
+                            text = { Text(if (chat.pinned) "Unpin chat" else "Pin chat") },
+                            onClick = { menuOpen = false; onTogglePin(chat.id) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(if (chat.archived) "Unarchive chat" else "Archive chat") },
+                            onClick = { menuOpen = false; onToggleArchive(chat.id, !chat.archived) }
+                        )
                     }
                 }
             }

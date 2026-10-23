@@ -226,6 +226,15 @@ internal fun NativeCallScreen(
                     fontSize = 15.sp,
                     textAlign = TextAlign.Center
                 )
+                call.networkHint?.let { hint ->
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        hint,
+                        color = Color(0xFFFFD99B),
+                        fontSize = 13.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
                 call.error?.let {
                     Spacer(Modifier.height(8.dp))
                     Text(

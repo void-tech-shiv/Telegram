@@ -24,7 +24,9 @@ data class NativeCallUi(
     val bluetooth: Boolean = false,
     val error: String? = null,
     /** Monotonic clock, set only after real NTgCalls CONNECTED. */
-    val connectedAtElapsedMs: Long? = null
+    val connectedAtElapsedMs: Long? = null,
+    /** Android default network hint only; NOT a proof of WebRTC ICE health. */
+    val networkHint: String? = null
 )
 
 /**
@@ -60,6 +62,15 @@ class NativeCallController(
     private val maxBufferedPackets = 32
     private val maxPacketBytes = 65536
     private val appContext = context.applicationContext
+    // Only watches Android's default network during a live TDLib call.
+    // Never redials, restarts ICE or interrupts the already-working media flow.
+    private val networkTracker = CallNetworkTracker(appContext) { status ->
+        synchronized(lock) {
+            _call.value?.let { current ->
+                _call.value = current.copy(networkHint = status.hint)
+            }
+        }
+    }
 
     fun onUpdate(update: TdApi.Object) {
         if (!enabled) return
@@ -95,20 +106,25 @@ class NativeCallController(
                             true
                         }
                     }
-                    if (shouldStop) worker.execute {
-                        media?.stop()
-                        media = null
+                    if (shouldStop) {
+                        networkTracker.stop()
+                        worker.execute {
+                            media?.stop()
+                            media = null
+                        }
                     }
                     return
                 }
 
                 val gen: Long
+                var shouldObserveNetwork = false
                 synchronized(lock) {
                     // Never let an older call update replace an existing live call.
                     if (tdCall != null && tdCall?.id != call.id) return
                     tdCall = call
                     gen = generation
                     val old = _call.value?.takeIf { it.callId == call.id }
+                    shouldObserveNetwork = old == null
                     _call.value = NativeCallUi(
                         call.id, call.isVideo, call.isOutgoing,
                         when (state) {
@@ -121,9 +137,11 @@ class NativeCallController(
                         muted = old?.muted ?: false, speaker = old?.speaker ?: false,
                         bluetooth = old?.bluetooth ?: false,
                         error = old?.error,
-                        connectedAtElapsedMs = old?.connectedAtElapsedMs
+                        connectedAtElapsedMs = old?.connectedAtElapsedMs,
+                        networkHint = old?.networkHint
                     )
                 }
+                if (shouldObserveNetwork) networkTracker.start()
                 if (state is TdApi.CallStateReady) {
                     synchronized(lock) {
                         if (connectedCallId == call.id) return
@@ -385,6 +403,7 @@ class NativeCallController(
             _call.value = null
             _notice.value = null
         }
+        networkTracker.stop()
         worker.execute { media?.stop(); media = null }
     }
 }
