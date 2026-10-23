@@ -585,6 +585,7 @@ private fun GlaciaApp(
                         },
                         expressions = expressions,
                         onRefreshExpressions = session::loadExpressions,
+                        onLoadStickerPack = session::loadStickerPack,
                         onSendExpression = { item, replyId ->
                             session.sendExpression(current.id, item, replyId)
                         },
