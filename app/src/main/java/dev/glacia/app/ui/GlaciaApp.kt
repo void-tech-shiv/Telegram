@@ -1,9 +1,18 @@
 package dev.glacia.app.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.Manifest
+import android.os.Build
+import android.content.pm.PackageManager
+import android.content.Intent
+import android.provider.Settings
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -51,6 +60,7 @@ import dev.glacia.app.data.ChatFilters
 import coil3.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
 import java.io.File
+import dev.glacia.app.data.NotificationHealth
 import dev.glacia.app.data.TdlibSession
 import dev.glacia.app.settings.ThemeChoice
 import dev.glacia.app.settings.ThemePreferences
@@ -67,6 +77,38 @@ fun GlaciaRoot() {
     val theme by preferences.theme.collectAsState(initial = ThemeChoice.SYSTEM)
     val scope = rememberCoroutineScope()
     val session = remember(context) { TdlibSession(context) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(session, lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) session.setAppForeground(true)
+            if (event == Lifecycle.Event.ON_PAUSE ||
+                event == Lifecycle.Event.ON_STOP) session.setAppForeground(false)
+        }
+        session.setAppForeground(
+            lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        )
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    var notificationsAllowed by remember {
+        mutableStateOf(
+            Build.VERSION.SDK_INT < 33 ||
+                context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
+                    PackageManager.PERMISSION_GRANTED
+        )
+    }
+    val permissionRequest = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> notificationsAllowed = granted }
+    DisposableEffect(lifecycleOwner) {
+        val permissionObserver = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                notificationsAllowed = session.notificationsAllowed()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(permissionObserver)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(permissionObserver) }
+    }
     DisposableEffect(session) {
         session.start()
         onDispose { session.close() }
@@ -82,6 +124,20 @@ fun GlaciaRoot() {
                 liveChats = realChats,
                 session = session,
                 photoPaths = photoPaths,
+                notificationPermission = notificationsAllowed,
+                onTestNotification = { session.sendTestNotification() },
+                onOpenNotificationSettings = {
+                    val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                        putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                },
+                onNotificationPermission = {
+                    if (Build.VERSION.SDK_INT >= 33 && !notificationsAllowed) {
+                        permissionRequest.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                },
                 onThemeChange = { scope.launch { preferences.setTheme(it) } }
             )
         } else {
@@ -125,6 +181,10 @@ private fun GlaciaApp(
     liveChats: List<Chat>,
     session: TdlibSession,
     photoPaths: Map<Int, String>,
+    notificationPermission: Boolean,
+    onTestNotification: () -> Boolean,
+    onOpenNotificationSettings: () -> Unit,
+    onNotificationPermission: () -> Unit,
     onThemeChange: (ThemeChoice) -> Unit
 ) {
     val hazeState = rememberHazeState()
@@ -137,11 +197,26 @@ private fun GlaciaApp(
     val discovering by session.discoveryLoading.collectAsState()
     val discoveryError by session.discoveryError.collectAsState()
     val current = (liveChats + discovered).firstOrNull { it.id == openChatId }
+    DisposableEffect(session, current?.id) {
+        session.setVisibleChat(current?.id)
+        onDispose { session.setVisibleChat(null) }
+    }
     val messagesByChat by session.messages.collectAsState()
     val loadingChats by session.historyLoading.collectAsState()
     val documentTransfers by session.documentTransfers.collectAsState()
     val messageErrors by session.messageErrors.collectAsState()
     val outboxRead by session.outboxRead.collectAsState()
+    val typingByChat by session.typingActivities.collectAsState()
+    val notificationSetup by session.notificationSetup.collectAsState()
+    val notificationEvents by session.notificationEvents.collectAsState()
+    val notificationHealth by session.notificationHealth.collectAsState()
+    LaunchedEffect(current?.id) {
+        if (current == null) return@LaunchedEffect
+        while (true) {
+            session.pruneTyping()
+            delay(1_000)
+        }
+    }
     val lifecycleOwner = LocalLifecycleOwner.current
     var resumed by remember(lifecycleOwner) {
         mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
@@ -191,7 +266,14 @@ private fun GlaciaApp(
                         Column(Modifier.weight(1f)) {
                             Text(current.title, color = ink(dark), fontWeight = FontWeight.Bold,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text("Telegram • Live messages", color = mutedInk(dark), fontSize = 11.sp)
+                            val typingNow = typingByChat[current.id] != null
+                            Text(
+                                if (typingNow) {
+                                    if (current.isGroup) "Someone is typing…" else "typing…"
+                                } else "Telegram • Live messages",
+                                color = if (typingNow) accent(dark) else mutedInk(dark),
+                                fontSize = 11.sp
+                            )
                         }
                     } else {
                         Column(Modifier.weight(1f)) {
@@ -227,6 +309,9 @@ private fun GlaciaApp(
                         onVisibleMessages = { ids ->
                             session.viewVisibleMessages(current.id, ids)
                         },
+                        onTyping = { typing ->
+                            session.sendTypingAction(current.id, typing)
+                        },
                         onSend = { text -> session.sendText(current.id, text) },
                         onLoadMore = {
                             val earliestId = messagesByChat[current.id]?.firstOrNull()?.id ?: 0L
@@ -257,7 +342,12 @@ private fun GlaciaApp(
                             onSearch = { session.searchTelegramChats(it) },
                             onOpen = { openChatId = it.id }
                         )
-                        else -> SettingsScreen(selectedTheme, dark, onThemeChange)
+                        else -> SettingsScreen(
+                            selectedTheme, dark, onThemeChange,
+                            notificationPermission, onNotificationPermission,
+                            onTestNotification, onOpenNotificationSettings,
+                            notificationSetup, notificationEvents, notificationHealth
+                        )
                     }
                 }
             }
@@ -541,8 +631,21 @@ private fun DiscoverScreen(dark: Boolean) {
 }
 
 @Composable
-private fun SettingsScreen(selected: ThemeChoice, dark: Boolean, onSelect: (ThemeChoice) -> Unit) {
-    Column(Modifier.fillMaxSize().padding(horizontal = 23.dp, vertical = 18.dp)) {
+private fun SettingsScreen(
+    selected: ThemeChoice,
+    dark: Boolean,
+    onSelect: (ThemeChoice) -> Unit,
+    notificationPermission: Boolean,
+    onNotificationPermission: () -> Unit,
+    onTestNotification: () -> Boolean,
+    onOpenNotificationSettings: () -> Unit,
+    notificationSetup: String,
+    notificationEvents: Int,
+    notificationHealth: NotificationHealth
+) {
+    var notificationTestResult by remember { mutableStateOf<String?>(null) }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+        .padding(horizontal = 23.dp, vertical = 18.dp)) {
         Text("Appearance", color = ink(dark), fontSize = 29.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(7.dp))
         Text("Choose your perfect glass.", color = mutedInk(dark))
@@ -569,8 +672,69 @@ private fun SettingsScreen(selected: ThemeChoice, dark: Boolean, onSelect: (Them
                 }
             }
         }
+        Spacer(Modifier.height(20.dp))
+        Text("NOTIFICATIONS", color = accent(dark),
+            fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp, fontSize = 11.sp)
+        Spacer(Modifier.height(6.dp))
+        Text(
+            if (notificationPermission) "Android notification permission granted"
+            else "Permission required for new-message alerts",
+            color = mutedInk(dark), fontSize = 13.sp
+        )
+        if (!notificationPermission) {
+            TextButton(onClick = onNotificationPermission) {
+                Text("Allow notifications", color = accent(dark))
+            }
+        }
+        TextButton(onClick = onOpenNotificationSettings) {
+            Text("Android notification settings", color = accent(dark))
+        }
+        if (notificationPermission) {
+            TextButton(onClick = {
+                notificationTestResult = if (onTestNotification()) {
+                    "Test posted. Open Android's notification shade to see it."
+                } else {
+                    "Android is blocking notifications. Check app notification settings."
+                }
+            }) {
+                Text("Send test notification", color = accent(dark))
+            }
+        }
+        notificationTestResult?.let { result ->
+            Text(result, color = mutedInk(dark), fontSize = 12.sp)
+            Spacer(Modifier.height(5.dp))
+        }
+        Text(notificationSetup, color = mutedInk(dark), fontSize = 12.sp)
+        Text(
+            "TDLib group updates: $notificationEvents",
+            color = mutedInk(dark), fontSize = 12.sp
+        )
+        Text("Incoming message events: ${notificationHealth.incomingMessages}",
+            color = mutedInk(dark), fontSize = 12.sp)
+        Text("New TDLib notification items: ${notificationHealth.groupAdds}",
+            color = mutedInk(dark), fontSize = 12.sp)
+        Text("Android alerts posted: ${notificationHealth.posted}",
+            color = mutedInk(dark), fontSize = 12.sp)
+        Text(
+            "App state: " + (if (notificationHealth.inForeground) "Foreground" else "Background"),
+            color = mutedInk(dark), fontSize = 12.sp
+        )
+        Text("Last event: ${notificationHealth.lastDecision}",
+            color = mutedInk(dark), fontSize = 12.sp, lineHeight = 17.sp)
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Diagnostic counters reset if Android restarts the app process. " +
+                "They contain no chat contents or account identifiers.",
+            color = mutedInk(dark), fontSize = 11.sp
+        )
+        Spacer(Modifier.height(7.dp))
+        Text(
+            "Message alerts appear while GLACIA is in the background and its process is running. " +
+                "Foreground messages won't show an Android alert. Lock-screen previews hide content.",
+            color = mutedInk(dark), fontSize = 12.sp
+        )
         Spacer(Modifier.height(24.dp))
-        Text("GLACIA  •  v0.3.5", color = accent(dark),
+        Text("GLACIA  •  v0.3.6.3", color = accent(dark),
             fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp, fontSize = 11.sp)
         Spacer(Modifier.height(8.dp))
         Text("Experimental Telegram client", color = ink(dark),
@@ -578,7 +742,7 @@ private fun SettingsScreen(selected: ThemeChoice, dark: Boolean, onSelect: (Them
         Spacer(Modifier.height(8.dp))
         Text(
             "Available: real Telegram chats, text messaging, photos, files, video/audio " +
-                "playback, chat filters, Discover search, and experimental read checks.",
+                "playback, chat filters, Discover search, read checks, and live typing indicators.",
             color = mutedInk(dark), fontSize = 13.sp, lineHeight = 20.sp
         )
         Spacer(Modifier.height(14.dp))
@@ -586,8 +750,8 @@ private fun SettingsScreen(selected: ThemeChoice, dark: Boolean, onSelect: (Them
             fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp, fontSize = 11.sp)
         Spacer(Modifier.height(7.dp))
         Text(
-            "Notifications, typing indicators, voice recording, attachment sending and " +
-                "full message search are not ready yet. Group read receipts remain limited.",
+            "Background push delivery is not available when the app process is stopped. " +
+                "Voice recording, attachment sending and full message search are pending.",
             color = mutedInk(dark), fontSize = 13.sp, lineHeight = 20.sp
         )
     }
