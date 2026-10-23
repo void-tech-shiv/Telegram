@@ -242,6 +242,7 @@ private fun GlaciaApp(
     val loadingChats by session.historyLoading.collectAsState()
     val documentTransfers by session.documentTransfers.collectAsState()
     val messageErrors by session.messageErrors.collectAsState()
+    val mediaBusy by session.mediaSending.collectAsState()
     val outboxRead by session.outboxRead.collectAsState()
     val typingByChat by session.typingActivities.collectAsState()
     val notificationSetup by session.notificationSetup.collectAsState()
@@ -364,6 +365,11 @@ private fun GlaciaApp(
                             session.sendTypingAction(current.id, typing)
                         },
                         onSend = { text -> session.sendText(current.id, text) },
+                        onAttachment = { uri -> session.sendAttachment(current.id, uri) },
+                        onVoice = { voice ->
+                            session.sendVoice(current.id, voice.path, voice.durationSeconds, voice.opus)
+                        },
+                        mediaBusy = mediaBusy,
                         onLoadMore = {
                             val earliestId = messagesByChat[current.id]?.firstOrNull()?.id ?: 0L
                             session.loadHistory(current.id, earliestId)
