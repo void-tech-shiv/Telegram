@@ -1,0 +1,174 @@
+package dev.glacia.app.data
+
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import org.drinkless.tdlib.Client
+import org.drinkless.tdlib.TdApi
+import java.text.DateFormat
+import java.util.Date
+import java.util.Locale
+
+/**
+ * Live TDLib messages. Updates are delivered from TDLib threads, so the shared
+ * message map is guarded and emitted as immutable snapshots for Compose.
+ */
+class TdlibMessages(private val client: () -> Client?) {
+    private val lock = Any()
+    private val snapshots = mutableMapOf<Long, List<Message>>()
+    private val loadingChats = mutableSetOf<Long>()
+    private val _messages = MutableStateFlow<Map<Long, List<Message>>>(emptyMap())
+    val messages = _messages.asStateFlow()
+    private val _loading = MutableStateFlow<Set<Long>>(emptySet())
+    val loading = _loading.asStateFlow()
+    private val _errors = MutableStateFlow<Map<Long, String>>(emptyMap())
+    val errors = _errors.asStateFlow()
+
+    fun clear() {
+        synchronized(lock) {
+            snapshots.clear()
+            loadingChats.clear()
+            _messages.value = emptyMap()
+            _loading.value = emptySet()
+            _errors.value = emptyMap()
+        }
+    }
+
+    private fun error(chatId: Long, text: String?) {
+        synchronized(lock) {
+            _errors.value = _errors.value.toMutableMap().also {
+                if (text == null) it.remove(chatId) else it[chatId] = text
+            }
+        }
+    }
+
+    fun dismissError(chatId: Long) = error(chatId, null)
+
+    private fun merge(chatId: Long, received: List<Message>, replacedId: Long? = null) {
+        synchronized(lock) {
+            snapshots[chatId] = MessageReducer.merge(
+                snapshots[chatId].orEmpty(), received, replacedId
+            )
+            _messages.value = snapshots.toMap()
+        }
+    }
+
+    private fun delete(chatId: Long, ids: Collection<Long>) {
+        synchronized(lock) {
+            snapshots[chatId] = MessageReducer.delete(snapshots[chatId].orEmpty(), ids)
+            _messages.value = snapshots.toMap()
+        }
+    }
+
+    fun loadHistory(chatId: Long, beforeId: Long = 0L) {
+        val active = client() ?: run {
+            error(chatId, "Not connected to Telegram.")
+            return
+        }
+        synchronized(lock) {
+            if (!loadingChats.add(chatId)) return
+            _loading.value = loadingChats.toSet()
+        }
+        error(chatId, null)
+        active.send(TdApi.GetChatHistory(chatId, beforeId, 0, 40, false)) { result ->
+            synchronized(lock) {
+                loadingChats.remove(chatId)
+                _loading.value = loadingChats.toSet()
+            }
+            when (result) {
+                is TdApi.Messages -> {
+                    val fetched = result.messages?.map { fromTd(it) }.orEmpty()
+                    merge(chatId, fetched)
+                }
+                is TdApi.Error ->
+                    error(chatId, "Unable to load messages (code " + result.code + ").")
+                else -> error(chatId, "Unexpected history response. Try reopening this chat.")
+            }
+        }
+    }
+
+    fun sendText(chatId: Long, body: String) {
+        val text = body.trim()
+        if (text.isBlank() || text.length > 4096) {
+            error(chatId, "Message must be between 1 and 4096 characters.")
+            return
+        }
+        val active = client() ?: run {
+            error(chatId, "Not connected to Telegram.")
+            return
+        }
+        error(chatId, null)
+        // Only send when the user taps Send; no telemetry or mock message path.
+        val messageText = TdApi.FormattedText().apply { this.text = text }
+        val input = TdApi.InputMessageText().apply { this.text = messageText }
+        val function = TdApi.SendMessage().apply {
+            this.chatId = chatId
+            this.inputMessageContent = input
+        }
+        active.send(function) { result ->
+            when (result) {
+                is TdApi.Message -> merge(chatId, listOf(fromTd(result)))
+                is TdApi.Error ->
+                    error(chatId, "Message not sent (code " + result.code + ").")
+            }
+        }
+    }
+
+    /** TDLib updates for both incoming and outgoing messages. */
+    fun onUpdate(update: TdApi.Object) {
+        when (update) {
+            is TdApi.UpdateNewMessage -> merge(update.message.chatId, listOf(fromTd(update.message)))
+            is TdApi.UpdateMessageSendSucceeded ->
+                merge(update.message.chatId, listOf(fromTd(update.message)), update.oldMessageId)
+            is TdApi.UpdateMessageSendFailed -> {
+                merge(update.message.chatId, listOf(fromTd(update.message)), update.oldMessageId)
+                error(update.message.chatId, "A message failed to send. Check connection or chat permissions.")
+            }
+            is TdApi.UpdateMessageContent -> {
+                synchronized(lock) {
+                    val list = snapshots[update.chatId] ?: return
+                    snapshots[update.chatId] = list.map {
+                        if (it.id == update.messageId)
+                            it.copy(text = displayContent(update.newContent))
+                        else it
+                    }
+                    _messages.value = snapshots.toMap()
+                }
+            }
+            is TdApi.UpdateDeleteMessages -> delete(update.chatId, update.messageIds.toList())
+        }
+    }
+
+    private fun fromTd(message: TdApi.Message): Message {
+        val label = displayContent(message.content)
+        val clock = if (message.date > 0)
+            DateFormat.getTimeInstance(DateFormat.SHORT, Locale.getDefault())
+                .format(Date(message.date.toLong() * 1000L))
+        else ""
+        return Message(
+            id = message.id,
+            chatId = message.chatId,
+            text = label,
+            time = clock,
+            outgoing = message.isOutgoing,
+            date = message.date,
+            sending = message.sendingState is TdApi.MessageSendingStatePending,
+            failed = message.sendingState is TdApi.MessageSendingStateFailed
+        )
+    }
+
+    private fun displayContent(content: TdApi.MessageContent?): String = when (content) {
+        is TdApi.MessageText -> content.text?.text.orEmpty()
+        is TdApi.MessagePhoto -> "📷 Photo"
+        is TdApi.MessageVideo -> "🎥 Video"
+        is TdApi.MessageAnimation -> "🎞 Animation"
+        is TdApi.MessageVoiceNote -> "🎤 Voice message"
+        is TdApi.MessageVideoNote -> "🎬 Video message"
+        is TdApi.MessageAudio -> "🎵 Audio"
+        is TdApi.MessageDocument -> "📄 Document"
+        is TdApi.MessageSticker -> "🎨 Sticker"
+        is TdApi.MessagePoll -> "📊 Poll"
+        is TdApi.MessageLocation -> "📍 Location"
+        is TdApi.MessageContact -> "👤 Contact"
+        else -> "Unsupported message type"
+    }
+}

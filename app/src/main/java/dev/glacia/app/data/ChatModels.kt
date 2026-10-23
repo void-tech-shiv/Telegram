@@ -17,7 +17,10 @@ data class Message(
     val chatId: Long,
     val text: String,
     val time: String,
-    val outgoing: Boolean
+    val outgoing: Boolean,
+    val date: Int = 0,
+    val sending: Boolean = false,
+    val failed: Boolean = false
 )
 
 interface ChatRepository {
