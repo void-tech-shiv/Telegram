@@ -78,6 +78,7 @@ class TdlibSession(private val context: Context) {
     val notificationSetup = _notificationSetup.asStateFlow()
     private val _notificationEvents = MutableStateFlow(0)
     val notificationEvents = _notificationEvents.asStateFlow()
+    val notificationHealth = notifications.health
 
     fun sendTestNotification(): Boolean = notifications.sendTestNotification()
     fun notificationsAllowed(): Boolean = notifications.areNotificationsAllowed()
