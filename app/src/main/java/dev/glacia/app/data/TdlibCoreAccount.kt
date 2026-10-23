@@ -157,6 +157,22 @@ class TdlibCoreAccount(
                     if (user.id == selfId) _state.value = _state.value.copy(self = person)
                     else publishContacts()
                 }
+                is TdApi.UpdateUserStatus -> {
+                    val current = users[update.userId]
+                    if (current != null) {
+                        val updated = current.copy(
+                            online = update.status is TdApi.UserStatusOnline,
+                            lastSeenAt = (update.status as? TdApi.UserStatusOffline)?.wasOnline
+                                ?: current.lastSeenAt
+                        )
+                        users[update.userId] = updated
+                        if (update.userId == selfId) {
+                            _state.value = _state.value.copy(self = updated)
+                        } else if (update.userId in contactIds) {
+                            publishContacts()
+                        }
+                    }
+                }
                 is TdApi.UpdateUserFullInfo -> if (update.userId == selfId) {
                     _state.value = _state.value.copy(
                         bio = update.userFullInfo?.bio?.text.orEmpty()
