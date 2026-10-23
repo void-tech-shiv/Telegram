@@ -2,9 +2,16 @@
 
 Independent Android Telegram client developed in **Kotlin + Jetpack Compose + TDLib**. Midnight Glass and Frosted Daylight themes, TDLib Telegram session, real chats/messaging, images/documents, Media3 video/voice playback, Discover search, unread filters, read receipts and typing indicators.
 
-## Current developer build: v0.3.9 (Phase 3.8)
+## Current developer build: v0.3.10 (Phase 3.9 — first increment)
 
-**Branch:** `feature/phase-3-8-message-actions-calls` · **Status:** experimental draft, not merged or production certified.
+**Branch:** `feature/phase-3-9-incoming-call-foundation` · **Status:** experimental draft, not merged or production certified.
+
+### Incoming-call foundation in v0.3.10
+- Detect real incoming 1:1 voice/video `UpdateCall` invitations while GLACIA is active, show caller and call type.
+- **Decline** an incoming invitation using Telegram's actual `DiscardCall` method; **Ignore** leaves it unanswered.
+- Open the official Telegram app to answer manually, even for contacts without a username.
+- Caller-name lookup, in-flight decline handling, stale-update protection and new reducer unit tests.
+- **Native in-app answer/outgoing audio/video is NOT implemented.** No tgcalls/WebRTC engine, camera stream, or voice transport is present. See `docs/PHASE3_9.md`.
 
 ### Message actions and calls in v0.3.9
 - Long-press a message to Reply / Forward / Edit / Delete (for me or everyone) using Telegram's permission rules.
@@ -31,7 +38,7 @@ Independent Android Telegram client developed in **Kotlin + Jetpack Compose + TD
 ```powershell
 cd D:\telegram\Telegram
 git fetch origin
-git switch --track origin/feature/phase-3-8-message-actions-calls
+git switch --track origin/feature/phase-3-9-incoming-call-foundation
 .\gradlew.bat :app:assembleDebug :app:testDebugUnitTest
 ```
 
@@ -41,9 +48,9 @@ Firebase is off by default. A Firebase/Telegram-compatible FCM project for `dev.
 
 ### Remaining work
 
-Reliable background push after process death, upload cleanup, full message-content search, reactions/calls, and production security audit remain outstanding.
+Reliable background push after process death, upload cleanup, full message-content search, native voice/video media calling, and production security audit remain outstanding.
 
-See `docs/PHASE3_7.md` for media/device QA, and `docs/PHASE3_6.md` for push limitations; Cherrygram is credited below as UI/product inspiration only, without copying GPL-licensed source code.
+See `docs/PHASE3_9.md` for call limitations / device QA, `docs/PHASE3_7.md` for media/device QA, and `docs/PHASE3_6.md` for push limitations; Cherrygram is credited below as UI/product inspiration only, without copying GPL-licensed source code.
 
 ---
 ## Open-source inspiration
