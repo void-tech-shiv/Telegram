@@ -269,6 +269,22 @@ private fun GlaciaApp(
         }
     }
 
+    // Android 12+ requires explicit consent before selecting a Bluetooth
+    // communication device. No headset permission is requested at startup.
+    val bluetoothPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) session.bluetoothNativeCall()
+    }
+    fun requestBluetoothAudio() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        if (androidx.core.content.ContextCompat.checkSelfPermission(
+                deviceContext, Manifest.permission.BLUETOOTH_CONNECT
+            ) == PackageManager.PERMISSION_GRANTED) {
+            session.bluetoothNativeCall()
+        } else bluetoothPermission.launch(Manifest.permission.BLUETOOTH_CONNECT)
+    }
+
     val inAppCall by session.nativeCall.collectAsState()
     val inAppCallNotice by session.nativeCallNotice.collectAsState()
     inAppCallNotice?.let { notice ->
@@ -292,6 +308,7 @@ private fun GlaciaApp(
             onHangUp = session::hangupNativeCall,
             onMute = { session.muteNativeCall(!running.muted) },
             onSpeaker = { session.speakerNativeCall(!running.speaker) },
+            onBluetooth = { requestBluetoothAudio() },
             onCameraSwitch = session::switchNativeCamera
         )
     }
