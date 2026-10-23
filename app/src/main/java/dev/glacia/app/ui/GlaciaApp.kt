@@ -369,6 +369,7 @@ private fun GlaciaApp(
         onDispose { session.setVisibleChat(null) }
     }
     val messagesByChat by session.messages.collectAsState()
+    val chatSearchResults by session.chatSearchResults.collectAsState()
     val loadingChats by session.historyLoading.collectAsState()
     val documentTransfers by session.documentTransfers.collectAsState()
     val messageErrors by session.messageErrors.collectAsState()
@@ -584,6 +585,14 @@ private fun GlaciaApp(
                         onLoadMore = {
                             val earliestId = messagesByChat[current.id]?.firstOrNull()?.id ?: 0L
                             session.loadHistory(current.id, earliestId)
+                        },
+                        searchState = chatSearchResults[current.id],
+                        onSearchMessages = { term, more ->
+                            session.searchChatMessages(current.id, term, more)
+                        },
+                        onClearSearch = { session.clearChatSearch(current.id) },
+                        onJumpToMessage = { messageId ->
+                            session.loadMessageAround(current.id, messageId)
                         },
                         onDismissError = { session.dismissMessageError(current.id) }
                     )
