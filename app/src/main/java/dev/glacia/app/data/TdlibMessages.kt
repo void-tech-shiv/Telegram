@@ -245,6 +245,9 @@ class TdlibMessages(
         is TdApi.MessageVoiceNote -> "voice"
         is TdApi.MessageAudio -> "audio"
         is TdApi.MessageDocument -> "document"
+        // Telegram call records are service events, not ordinary text messages.
+        // Keep their type for message-action eligibility checks.
+        is TdApi.MessageCall -> "call"
         else -> null
     }
 
