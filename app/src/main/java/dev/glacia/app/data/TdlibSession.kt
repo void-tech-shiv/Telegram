@@ -90,16 +90,39 @@ class TdlibSession(private val context: Context) {
         }
     }
 
+    private val _notificationTargetChat = MutableStateFlow<Chat?>(null)
+    val notificationTargetChat = _notificationTargetChat.asStateFlow()
+
     fun ensureChat(chatId: Long) {
         if (chatId == 0L) return
-        synchronized(known) { if (known.containsKey(chatId)) return }
+        val cached = synchronized(known) { known[chatId] }
+        if (cached != null) {
+            publishNotificationChat(cached)
+            return
+        }
         client?.send(TdApi.GetChat(chatId)) { response ->
             if (response is TdApi.Chat) synchronized(known) {
                 known[chatId] = response
                 trackMute(response)
+                publishNotificationChat(response)
                 emitChats()
             }
         }
+    }
+
+    private fun publishNotificationChat(chat: TdApi.Chat) {
+        fileStore.ensure(chat.photo?.small)
+        _notificationTargetChat.value = Chat(
+            id = chat.id,
+            title = chat.title.ifBlank { "Telegram chat" },
+            username = "",
+            preview = "",
+            time = "",
+            unread = chat.unreadCount,
+            isGroup = chat.type is TdApi.ChatTypeBasicGroup ||
+                chat.type is TdApi.ChatTypeSupergroup,
+            photoFileId = chat.photo?.small?.id
+        )
     }
 
     private fun trackMute(chat: TdApi.Chat) {
@@ -408,6 +431,7 @@ class TdlibSession(private val context: Context) {
                 _notificationEvents.value = 0
                 synchronized(known) {
                     known.clear()
+                    _notificationTargetChat.value = null
                     _chatMuteStates.value = emptyMap()
                     missingTitleRefreshes.clear()
                     _chats.value = emptyList()
