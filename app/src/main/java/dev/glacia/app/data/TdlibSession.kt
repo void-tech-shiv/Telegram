@@ -249,6 +249,11 @@ class TdlibSession(private val context: Context) {
             }
             is TdApi.UpdateChatReadInbox -> synchronized(known) {
                 known[obj.chatId]?.unreadCount = obj.unreadCount
+                // Telegram may mark previously viewed messages unread again from
+                // another device. Permit a fresh ViewMessages acknowledgement.
+                if (obj.unreadCount > 0) {
+                    synchronized(viewLock) { maxViewedByChat.remove(obj.chatId) }
+                }
                 emitChats()
             }
             is TdApi.UpdateChatReadOutbox -> synchronized(known) {
