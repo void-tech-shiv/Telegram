@@ -403,7 +403,7 @@ internal fun CompactHubHome(
         Spacer(Modifier.height(24.dp))
         CompactMenuGroup(dark) {
             CompactMenuRow("🚪", "Log out of this device",
-                "Confirmation required", dark) { logoutDialog = true }
+                "Confirmation required", dark, onClick = { logoutDialog = true })
         }
         Spacer(Modifier.height(20.dp))
         Text("GLACIA v${BuildConfig.VERSION_NAME} · Telegram TDLib",
@@ -469,10 +469,10 @@ internal fun CompactNotificationPage(
                     "Android permission is required", dark, onAskPermission)
             }
             CompactMenuRow("🧪", "Send test notification",
-                "Check whether Android displays a test alert", dark) {
+                "Check whether Android displays a test alert", dark, onClick = {
                 result = if (onTestNotification()) "Test posted. Check your notification shade."
                     else "Notification blocked by Android settings."
-            }
+            })
         }
         result?.let { Text(it, color = coreSub(dark),
             modifier = Modifier.padding(10.dp), fontSize = 13.sp) }
