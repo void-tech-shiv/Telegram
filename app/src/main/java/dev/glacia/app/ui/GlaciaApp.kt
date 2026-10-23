@@ -570,15 +570,15 @@ private fun SettingsScreen(selected: ThemeChoice, dark: Boolean, onSelect: (Them
             }
         }
         Spacer(Modifier.height(24.dp))
-        Text("GLACIA  •  v0.3.4", color = accent(dark),
+        Text("GLACIA  •  v0.3.5", color = accent(dark),
             fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp, fontSize = 11.sp)
         Spacer(Modifier.height(8.dp))
         Text("Experimental Telegram client", color = ink(dark),
             fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
         Spacer(Modifier.height(8.dp))
         Text(
-            "Available: real Telegram chats, text messaging, photos, file downloads, " +
-                "video and audio playback, chat filters, and Telegram Discover search.",
+            "Available: real Telegram chats, text messaging, photos, files, video/audio " +
+                "playback, chat filters, Discover search, and experimental read checks.",
             color = mutedInk(dark), fontSize = 13.sp, lineHeight = 20.sp
         )
         Spacer(Modifier.height(14.dp))
@@ -586,8 +586,8 @@ private fun SettingsScreen(selected: ThemeChoice, dark: Boolean, onSelect: (Them
             fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp, fontSize = 11.sp)
         Spacer(Modifier.height(7.dp))
         Text(
-            "Notifications, typing indicators, read receipts, voice recording, " +
-                "attachment sending and full message search are not ready yet.",
+            "Notifications, typing indicators, voice recording, attachment sending and " +
+                "full message search are not ready yet. Group read receipts remain limited.",
             color = mutedInk(dark), fontSize = 13.sp, lineHeight = 20.sp
         )
     }
