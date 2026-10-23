@@ -160,7 +160,13 @@ class TdlibCoreSecurity(private val client: () -> Client?) {
                     it is TdApi.UserPrivacySettingRuleAllowContacts ||
                     it is TdApi.UserPrivacySettingRuleRestrictAll
             }
-            val next = TdApi.UserPrivacySettingRules((exceptions + base).toTypedArray())
+            // Java TDLib wants an invariant Array<UserPrivacySettingRule>.
+            // Kotlin otherwise infers Array<out ...> for mixed subclasses.
+            val rules: Array<TdApi.UserPrivacySettingRule> =
+                Array(exceptions.size + 1) { index ->
+                    if (index == exceptions.size) base else exceptions[index]
+                }
+            val next = TdApi.UserPrivacySettingRules(rules)
             active.send(TdApi.SetUserPrivacySettingRules(setting, next)) { result ->
                 synchronized(lock) {
                     _state.value = _state.value.copy(
