@@ -30,15 +30,24 @@
 cd D:\telegram\Telegram
 git fetch origin
 git switch --track origin/feature/phase-3-9-native-media-bootstrap
-.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest -Pglacia.experimentalNativeCalls=true
+.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest "-Pglacia.experimentalNativeCalls=true"
 ```
 
 Already checked out:
 ```powershell
 git switch feature/phase-3-9-native-media-bootstrap
 git pull --ff-only origin feature/phase-3-9-native-media-bootstrap
-.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest -Pglacia.experimentalNativeCalls=true
+.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest "-Pglacia.experimentalNativeCalls=true"
 ```
+
+
+**PowerShell troubleshooting:** Some PowerShell versions split an unquoted `-Pglacia.experimentalNativeCalls=true` at the dot, making Gradle search for a nonexistent task `.experimentalNativeCalls=true`. Keep the entire flag in quotes as shown, or use the PowerShell stop-parsing token:
+
+```powershell
+.\gradlew.bat --% :app:assembleDebug :app:testDebugUnitTest -Pglacia.experimentalNativeCalls=true
+```
+
+The initial setup commands use `git switch --track` only once; after that switch and pull the existing branch. Preserve uncommitted changes in `gradle.properties`, `settings.gradle.kts`, and the wrapper, unless reviewed separately.
 
 **Important:** in Android Studio's usual Run button, the Gradle property must also be set in root `gradle.properties` **locally** (ignored if it contains private settings) with:
 ```properties
