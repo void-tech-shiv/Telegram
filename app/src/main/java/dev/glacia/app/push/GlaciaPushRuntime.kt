@@ -10,6 +10,7 @@ import dev.glacia.app.data.TdlibSession
 object GlaciaPushRuntime {
     private var shared: TdlibSession? = null
     private var uiOwners = 0
+    private var pushOwners = 0
 
     @Synchronized fun attachUi(context: Context): TdlibSession {
         uiOwners++
@@ -21,7 +22,7 @@ object GlaciaPushRuntime {
 
     @Synchronized fun detachUi(session: TdlibSession) {
         uiOwners = (uiOwners - 1).coerceAtLeast(0)
-        if (uiOwners == 0 && shared === session) {
+        if (uiOwners == 0 && pushOwners == 0 && shared === session) {
             session.close()
             shared = null
         }
@@ -29,13 +30,17 @@ object GlaciaPushRuntime {
 
     /** Only invoked on the Firebase worker thread, never the Android main thread. */
     fun receivePush(context: Context, payload: String) {
-        val session = synchronized(this) { get(context) }
+        val session = synchronized(this) {
+            pushOwners++
+            get(context)
+        }
         try {
             session.start()
             session.processPushPayload(payload)
         } finally {
             synchronized(this) {
-                if (uiOwners == 0 && shared === session) {
+                pushOwners = (pushOwners - 1).coerceAtLeast(0)
+                if (uiOwners == 0 && pushOwners == 0 && shared === session) {
                     session.close()
                     shared = null
                 }
