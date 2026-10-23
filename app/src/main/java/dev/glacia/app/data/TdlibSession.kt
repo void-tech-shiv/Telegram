@@ -84,10 +84,30 @@ class TdlibSession(private val context: Context) {
     private val fileStore = TdlibFileStore { client }
     private val discovery = TdlibDiscovery({ client }, fileStore)
     private val coreAccount = TdlibCoreAccount({ client }, fileStore)
+    private val coreSecurity = TdlibCoreSecurity { client }
+    val coreSecurityState = coreSecurity.state
+    fun refreshCoreSecurity() = coreSecurity.refresh()
+    fun unblockTelegramUser(userId: Long) = coreSecurity.unblock(userId)
+    fun blockTelegramUser(userId: Long) = coreSecurity.block(userId)
+    fun terminateOtherTelegramSession(sessionId: Long) = coreSecurity.terminateOtherDevice(sessionId)
+    private val communities = TdlibCoreCommunities { client }
+    val communityState = communities.state
+    fun inspectChatInfo(chatId: Long) = communities.inspect(chatId)
+    fun renameCommunity(chatId: Long, title: String) = communities.rename(chatId, title)
+    fun describeCommunity(chatId: Long, about: String) = communities.description(chatId, about)
+    fun markTelegramChatUnread(chatId: Long, unread: Boolean) =
+        communities.markedUnread(chatId, unread)
+    fun makeCommunity(title: String, about: String, channel: Boolean, onChat: (Long) -> Unit) =
+        communities.createCommunity(title, about, channel, onChat)
+    fun generateChatInvite(chatId: Long) = communities.createInvite(chatId)
     val accountState = coreAccount.state
     fun refreshCoreAccount() = coreAccount.refresh()
     fun updateOwnProfile(first: String, last: String, bio: String) =
         coreAccount.saveProfile(first, last, bio)
+    fun updateOwnUsername(username: String) = coreAccount.changeUsername(username)
+    fun updateOwnPhoto(path: String) = coreAccount.uploadProfilePhoto(path)
+    fun addTelegramContact(username: String) = coreAccount.addContactByUsername(username)
+    fun removeTelegramContact(userId: Long) = coreAccount.removeContact(userId)
     fun openContactChat(userId: Long, onChat: (Long) -> Unit) =
         coreAccount.openContact(userId, onChat)
     fun openSavedMessages(onChat: (Long) -> Unit) = coreAccount.openSavedMessages(onChat)
@@ -630,6 +650,8 @@ class TdlibSession(private val context: Context) {
                 messaging.clear()
                 expressions.clear()
                 coreAccount.clear()
+                coreSecurity.clear()
+                communities.clear()
                 messageSearch.clearAll()
                 messageActions.clear()
                 callInbox.clear()
@@ -762,6 +784,8 @@ class TdlibSession(private val context: Context) {
         messageSearch.clearAll()
         expressions.clear()
         coreAccount.clear()
+        coreSecurity.clear()
+        communities.clear()
         callInbox.clear()
         nativeCalls.clear()
         incomingCallAlerts.clear()
