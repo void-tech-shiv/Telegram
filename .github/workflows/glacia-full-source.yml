@@ -1,0 +1,58 @@
+name: GLACIA Full Telegram Source Import
+
+on:
+  push:
+    branches:
+      - feature/glacia-full-telegram-bootstrap
+    paths:
+      - .github/workflows/glacia-full-source.yml
+      - tools/import_full_telegram.py
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  import-upstream:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout GLACIA migration script
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Clone pinned upstream Telegram/Cherrygram code
+        run: |
+          git clone --depth=1 \
+            https://github.com/arsLan4k1390/Cherrygram.git source
+          test "$(git -C source rev-parse HEAD)" = "2cad8055bf9cb633da60d76786ddebdd9e35499d"
+          # Submodules remain as tracked gitlinks; only an Android workstation
+          # with SDK/NDK and local credentials should build these sources.
+
+      - name: Prepare user-facing GLACIA identity (never build or execute upstream)
+        run: python3 tools/import_full_telegram.py source
+
+      - name: Import into isolated GLACIA source branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          git -C source config user.name "GLACIA Source Bot"
+          git -C source config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C source add -A
+          # A standalone root commit avoids cross-repository shallow-history
+          # dependencies ("did not receive expected object" GitHub failure).
+          tree="$(git -C source write-tree)"
+          root_commit="$(printf 'GLACIA GPL full-source experimental import\n' | git -C source commit-tree "$tree")"
+          # No force push. Existing branch must not be overwritten.
+          git -C source remote add glacia "https://x-access-token:${GH_TOKEN}@github.com/${GH_REPO}.git"
+          git -C source push glacia "$root_commit":refs/heads/feature/glacia-full-source
+
+      - name: Summary
+        run: |
+          echo "Source branch: feature/glacia-full-source" >> "$GITHUB_STEP_SUMMARY"
+          echo "App ID: dev.glacia.fullclient" >> "$GITHUB_STEP_SUMMARY"
+          echo "No APK was built. Login/build/security review still blocked." >> "$GITHUB_STEP_SUMMARY"
+          echo "Audit report: GLACIA_SOURCE_REVIEW.json in source branch." >> "$GITHUB_STEP_SUMMARY"
