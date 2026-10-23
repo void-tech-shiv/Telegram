@@ -108,15 +108,15 @@ class MediaOutbox(
                 val text = TdApi.FormattedText().apply { this.text = caption.take(900) }
                 val message = when (kind) {
                     "photo" -> TdApi.InputMessagePhoto().apply {
-                        photo = localFile
+                        photo = TdApi.InputPhoto().apply { photo = localFile }
                         this.caption = text
                     }
                     "video" -> TdApi.InputMessageVideo().apply {
-                        video = localFile
+                        video = TdApi.InputVideo().apply { video = localFile }
                         this.caption = text
                     }
                     else -> TdApi.InputMessageDocument().apply {
-                        document = localFile
+                        document = TdApi.InputDocument().apply { document = localFile }
                         this.caption = text
                     }
                 }
@@ -144,14 +144,18 @@ class MediaOutbox(
         val localFile = TdApi.InputFileLocal(canonical.absolutePath)
         val content = if (isOpus) {
             TdApi.InputMessageVoiceNote().apply {
-                voiceNote = localFile
-                duration = durationSeconds.coerceAtLeast(1)
-                waveform = byteArrayOf()
+                voiceNote = TdApi.InputVoiceNote().apply {
+                    voiceNote = localFile
+                    duration = durationSeconds.coerceAtLeast(1)
+                    waveform = byteArrayOf()
+                }
             }
         } else {
             // API 26-28 can record AAC/M4A but not native Opus voice notes.
             // Send as an ordinary audio file rather than mislabel as OGG/Opus.
-            TdApi.InputMessageDocument().apply { document = localFile }
+            TdApi.InputMessageDocument().apply {
+                document = TdApi.InputDocument().apply { document = localFile }
+            }
         }
         send(chatId, content)
     }
