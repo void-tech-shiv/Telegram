@@ -16,6 +16,15 @@ val privateProps = Properties().apply {
 val telegramApiId = privateProps.getProperty("telegram.apiId")?.trim()?.toIntOrNull() ?: 0
 val telegramApiHash = privateProps.getProperty("telegram.apiHash")?.trim().orEmpty()
 
+// Android Studio's Run button does not inherit an earlier command-line -P flag.
+// Allow an explicit, private local.properties opt-in to persist across IDE builds.
+// Never enable experimental JNI voice/video calling in release APKs.
+val experimentalNativeCalls = (
+    providers.gradleProperty("glacia.experimentalNativeCalls").orNull
+        ?: privateProps.getProperty("glacia.experimentalNativeCalls")
+    )?.trim()?.equals("true", ignoreCase = true) == true
+
+
 android {
     namespace = "dev.glacia.app"
     compileSdk = 37
@@ -24,20 +33,25 @@ android {
         applicationId = "dev.glacia.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 17
-        versionName = "0.3.11"
+        versionCode = 18
+        versionName = "0.3.12"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("boolean", "FCM_CONFIGURED", "${file("google-services.json").isFile}")
-        // Must be explicitly opted into by a local developer build; no shipped calling claims.
-        buildConfigField("boolean", "EXPERIMENTAL_NATIVE_CALLS",
-            "${providers.gradleProperty("glacia.experimentalNativeCalls").orNull == "true"}")
         buildConfigField("int", "TELEGRAM_API_ID", "$telegramApiId")
         buildConfigField("String", "TELEGRAM_API_HASH", "\"$telegramApiHash\"")
     }
 
     buildTypes {
+        debug {
+            buildConfigField(
+                "boolean", "EXPERIMENTAL_NATIVE_CALLS", experimentalNativeCalls.toString()
+            )
+        }
         release {
             isMinifyEnabled = false
+            // Release builds never expose unverified native calling, even if the
+            // local debug property is set to true.
+            buildConfigField("boolean", "EXPERIMENTAL_NATIVE_CALLS", "false")
         }
     }
 
