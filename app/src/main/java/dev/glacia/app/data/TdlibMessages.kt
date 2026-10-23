@@ -45,6 +45,11 @@ class TdlibMessages(
     }
 
     fun dismissError(chatId: Long) = error(chatId, null)
+    /** Share TDLib send failures with the same in-chat error surface as text. */
+    fun reportError(chatId: Long, message: String) = error(chatId, message)
+    fun addOutgoing(message: TdApi.Message) =
+        merge(message.chatId, listOf(fromTd(message)))
+
 
     private fun merge(chatId: Long, received: List<Message>, replacedId: Long? = null) {
         synchronized(lock) {
