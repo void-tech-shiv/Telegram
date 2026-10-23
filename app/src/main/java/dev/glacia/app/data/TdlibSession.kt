@@ -178,6 +178,17 @@ class TdlibSession(private val context: Context) {
     val documentTransfers = fileStore.transfers
     fun requestDocumentDownload(fileId: Int) = fileStore.requestDocument(fileId)
     private val messaging = TdlibMessages({ client }, fileStore)
+    private val messageActions = TdlibMessageActions({ client }, messaging)
+    val actionPermissions = messageActions.permissions
+    fun loadMessageActions(chatId: Long, id: Long) = messageActions.properties(chatId, id)
+    fun forwardMessage(fromChatId: Long, id: Long, toChatId: Long) =
+        messageActions.forward(fromChatId, id, toChatId)
+    fun editMessage(chatId: Long, id: Long, body: String) =
+        messageActions.edit(chatId, id, body)
+    fun deleteMessage(chatId: Long, id: Long, forEveryone: Boolean) =
+        messageActions.delete(chatId, id, forEveryone)
+    fun reactToMessage(chatId: Long, id: Long, emoji: String, chosen: Boolean) =
+        messageActions.react(chatId, id, emoji, chosen)
     private val mediaOutbox = MediaOutbox(context, { client }, messaging)
     val mediaSending = mediaOutbox.busy
     fun sendAttachment(chatId: Long, uri: android.net.Uri) =
@@ -189,7 +200,8 @@ class TdlibSession(private val context: Context) {
     val messageErrors = messaging.errors
 
     fun loadHistory(chatId: Long, beforeId: Long = 0L) = messaging.loadHistory(chatId, beforeId)
-    fun sendText(chatId: Long, text: String) = messaging.sendText(chatId, text)
+    fun sendText(chatId: Long, text: String, replyTo: Long? = null) =
+        messaging.sendText(chatId, text, replyTo)
     fun dismissMessageError(chatId: Long) = messaging.dismissError(chatId)
 
     fun openChat(chatId: Long) {
@@ -486,6 +498,7 @@ class TdlibSession(private val context: Context) {
             }
             is TdApi.AuthorizationStateClosed -> {
                 messaging.clear()
+                messageActions.clear()
                 discovery.clear()
                 typing.clear()
                 fileStore.clear()
