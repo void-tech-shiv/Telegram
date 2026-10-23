@@ -64,6 +64,10 @@ import coil3.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
 import java.io.File
 import dev.glacia.app.data.NotificationHealth
+import dev.glacia.app.BuildConfig
+import com.google.firebase.FirebaseApp
+import com.google.firebase.messaging.FirebaseMessaging
+import dev.glacia.app.push.GlaciaPushRuntime
 import dev.glacia.app.data.TdlibSession
 import dev.glacia.app.settings.ThemeChoice
 import dev.glacia.app.settings.ThemePreferences
@@ -82,7 +86,14 @@ fun GlaciaRoot(
     val preferences = remember(context) { ThemePreferences(context) }
     val theme by preferences.theme.collectAsState(initial = ThemeChoice.SYSTEM)
     val scope = rememberCoroutineScope()
-    val session = remember(context) { TdlibSession(context) }
+    val session = remember(context) { GlaciaPushRuntime.attachUi(context) }
+    LaunchedEffect(session) {
+        if (BuildConfig.FCM_CONFIGURED && FirebaseApp.getApps(context).isNotEmpty()) {
+            FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
+                session.rememberPushToken(token)
+            }
+        }
+    }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(session, lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -117,7 +128,7 @@ fun GlaciaRoot(
     }
     DisposableEffect(session) {
         session.start()
-        onDispose { session.close() }
+        onDispose { GlaciaPushRuntime.detachUi(session) }
     }
     val auth by session.auth.collectAsState()
     val realChats by session.chats.collectAsState()
@@ -235,6 +246,7 @@ private fun GlaciaApp(
     val notificationSetup by session.notificationSetup.collectAsState()
     val notificationEvents by session.notificationEvents.collectAsState()
     val notificationHealth by session.notificationHealth.collectAsState()
+    val pushStatus by session.pushStatus.collectAsState()
     LaunchedEffect(current?.id) {
         if (current == null) return@LaunchedEffect
         while (true) {
@@ -384,7 +396,8 @@ private fun GlaciaApp(
                             selectedTheme, dark, onThemeChange,
                             notificationPermission, onNotificationPermission,
                             onTestNotification, onOpenNotificationSettings,
-                            notificationSetup, notificationEvents, notificationHealth
+                            notificationSetup, notificationEvents, notificationHealth,
+                            pushStatus
                         )
                     }
                 }
@@ -679,7 +692,8 @@ private fun SettingsScreen(
     onOpenNotificationSettings: () -> Unit,
     notificationSetup: String,
     notificationEvents: Int,
-    notificationHealth: NotificationHealth
+    notificationHealth: NotificationHealth,
+    pushStatus: String
 ) {
     var notificationTestResult by remember { mutableStateOf<String?>(null) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())
@@ -759,6 +773,10 @@ private fun SettingsScreen(
         )
         Text("Last event: ${notificationHealth.lastDecision}",
             color = mutedInk(dark), fontSize = 12.sp, lineHeight = 17.sp)
+        Spacer(Modifier.height(7.dp))
+        Text("PUSH STATUS", color = accent(dark),
+            fontWeight = FontWeight.Bold, fontSize = 11.sp)
+        Text(pushStatus, color = mutedInk(dark), fontSize = 12.sp)
         Spacer(Modifier.height(6.dp))
         Text(
             "Diagnostic counters reset if Android restarts the app process. " +
@@ -772,7 +790,7 @@ private fun SettingsScreen(
             color = mutedInk(dark), fontSize = 12.sp
         )
         Spacer(Modifier.height(24.dp))
-        Text("GLACIA  •  v0.3.6.3", color = accent(dark),
+        Text("GLACIA  •  v0.3.7", color = accent(dark),
             fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp, fontSize = 11.sp)
         Spacer(Modifier.height(8.dp))
         Text("Experimental Telegram client", color = ink(dark),
