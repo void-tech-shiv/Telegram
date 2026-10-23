@@ -36,7 +36,7 @@ jobs:
           test -f "$AAR"
           unzip -p "$AAR" classes.jar > /tmp/ntgcalls-classes.jar
           jar tf /tmp/ntgcalls-classes.jar | grep -E 'io/github/pytgcalls/.*(Frame|Protocol|Callback|RTCServer|AudioDescription|VideoDescription)' | head -80
-          for c in io.github.pytgcalls.NTgCalls io.github.pytgcalls.p2p.Protocol io.github.pytgcalls.media.AudioDescription io.github.pytgcalls.media.VideoDescription io.github.pytgcalls.p2p.RTCServer; do
+          for c in io.github.pytgcalls.NTgCalls io.github.pytgcalls.p2p.Protocol io.github.pytgcalls.media.AudioDescription io.github.pytgcalls.media.VideoDescription io.github.pytgcalls.p2p.RTCServer io.github.pytgcalls.models.Frame io.github.pytgcalls.models.FrameData io.github.pytgcalls.ConnectionInfo; do
             javap -classpath /tmp/ntgcalls-classes.jar "$c" || true
           done
       - name: Upload unsigned debug APK
