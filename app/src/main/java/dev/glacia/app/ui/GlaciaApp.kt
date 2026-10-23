@@ -68,6 +68,7 @@ import androidx.compose.ui.layout.ContentScale
 import java.io.File
 import dev.glacia.app.data.NotificationHealth
 import dev.glacia.app.BuildConfig
+import dev.glacia.app.calls.GlaciaCallService
 import com.google.firebase.FirebaseApp
 import com.google.firebase.messaging.FirebaseMessaging
 import dev.glacia.app.push.GlaciaPushRuntime
@@ -242,14 +243,37 @@ private fun GlaciaApp(
     // No permission grant = no native call (and no remote ringing).
     val deviceContext = LocalContext.current
     var pendingNativeAction by remember { mutableStateOf<Pair<Long, Boolean>?>(null) }
+    var failedForegroundCallStart by remember { mutableStateOf(false) }
+    // Android 14+ requires the camera/mic FGS to start from a visible
+    // activity with currently granted while-in-use permissions.
+    fun startNativeCallWithService(chatId: Long, video: Boolean) {
+        if (!GlaciaCallService.startFromVisibleUi(deviceContext, video)) {
+            failedForegroundCallStart = true
+            return
+        }
+        if (chatId == 0L) session.answerNativeCall()
+        else session.startNativeCall(chatId, video)
+    }
+    if (failedForegroundCallStart) {
+        AlertDialog(
+            onDismissRequest = { failedForegroundCallStart = false },
+            title = { Text("Calling unavailable") },
+            text = {
+                Text("Android could not start the ongoing-call service. Open GLACIA " +
+                    "and check microphone/camera permissions, then try again.")
+            },
+            confirmButton = {
+                TextButton(onClick = { failedForegroundCallStart = false }) { Text("OK") }
+            }
+        )
+    }
     val nativePermissions = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { results ->
         val action = pendingNativeAction
         pendingNativeAction = null
         if (action != null && results.values.all { it } && results.isNotEmpty()) {
-            if (action.first == 0L) session.answerNativeCall()
-            else session.startNativeCall(action.first, action.second)
+            startNativeCallWithService(action.first, action.second)
         }
     }
     fun requestNativeAction(chatId: Long, video: Boolean) {
@@ -261,8 +285,7 @@ private fun GlaciaApp(
                 deviceContext, it
             ) == PackageManager.PERMISSION_GRANTED
         }) {
-            if (chatId == 0L) session.answerNativeCall()
-            else session.startNativeCall(chatId, video)
+            startNativeCallWithService(chatId, video)
         } else {
             pendingNativeAction = chatId to video
             nativePermissions.launch(permissions)
