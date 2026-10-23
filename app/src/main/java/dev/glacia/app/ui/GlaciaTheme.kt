@@ -1,5 +1,12 @@
 package dev.glacia.app.ui
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
+
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -10,6 +17,12 @@ import dev.glacia.app.settings.ThemeChoice
 
 internal val IceBlue = Color(0xFF83DDF7)
 internal val Violet = Color(0xFFA98BFF)
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
 
 @Composable
 fun GlaciaTheme(choice: ThemeChoice, content: @Composable (Boolean) -> Unit) {
@@ -33,5 +46,13 @@ fun GlaciaTheme(choice: ThemeChoice, content: @Composable (Boolean) -> Unit) {
         onBackground = Color(0xFF1B2240),
         onSurface = Color(0xFF1B2240)
     )
+    val view = LocalView.current
+    SideEffect {
+        view.context.findActivity()?.let { activity ->
+            val bars = WindowCompat.getInsetsController(activity.window, view)
+            bars.isAppearanceLightStatusBars = !dark
+            bars.isAppearanceLightNavigationBars = !dark
+        }
+    }
     MaterialTheme(colorScheme = scheme) { content(dark) }
 }
