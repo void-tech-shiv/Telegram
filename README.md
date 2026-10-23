@@ -2,7 +2,21 @@
 
 Independent Android Telegram client developed in **Kotlin + Jetpack Compose + TDLib**. Midnight Glass and Frosted Daylight themes, TDLib Telegram session, real chats/messaging, images/documents, Media3 video/voice playback, Discover search, unread filters, read receipts and typing indicators.
 
-## Experimental developer build: v0.3.16 (Phase 3.11 — ongoing call lifecycle)
+## Experimental developer build: v0.3.17 (Phase 3.12 — network awareness)
+
+**Branch:** `feature/phase-3-12-network-awareness` · **Status:** draft / device QA required.
+
+- Real-device validation confirmed that Phase 3.11 background audio continues
+  and the notification **Hang up** action works. Lock-screen tests remain pending.
+- Track Android default network while a real call exists, with safe network
+  transition/loss hints in Liquid Glass calling UI. Clean up observer on call
+  end or logout. Unit tests cover stale event order and Wi-Fi↔mobile changes.
+- **Not seamless WebRTC network recovery:** Android connectivity observation
+  alone does not restart ICE or guarantee two-way audio survives switchovers.
+  The existing TDLib/NTgCalls media implementation is unchanged.
+- See `docs/PHASE3_12.md` for PowerShell checkout/build/install and test matrix.
+
+## Previous experimental developer build: v0.3.16 (Phase 3.11 — ongoing call lifecycle)
 
 **Branch:** `feature/phase-3-11-call-lifecycle` · **Status:** draft, real-device background testing required.
 
@@ -83,7 +97,7 @@ Independent Android Telegram client developed in **Kotlin + Jetpack Compose + TD
 ```powershell
 cd D:\telegram\Telegram
 git fetch origin
-git switch --track origin/feature/phase-3-11-call-lifecycle
+git switch --track origin/feature/phase-3-12-network-awareness
 .\gradlew.bat :app:assembleDebug :app:testDebugUnitTest "-Pglacia.experimentalNativeCalls=true"
 ```
 

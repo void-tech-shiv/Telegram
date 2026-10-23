@@ -2,9 +2,9 @@ name: GLACIA Android CI
 
 on:
   push:
-    branches: [main, feature/phase-2-tdlib-auth, feature/phase-3-messaging, feature/phase-3-1-media, feature/phase-3-2-playback, feature/phase-3-3-cherry-inspired, feature/phase-3-4-read-receipts, feature/phase-3-5-typing-notifications, feature/phase-3-6-smart-notifications, feature/phase-3-7-media-compose, feature/phase-3-8-message-actions-calls, feature/phase-3-9-incoming-call-foundation, feature/phase-3-9-native-media-bootstrap, feature/phase-3-10-liquid-glass-calls, feature/phase-3-11-call-lifecycle]
+    branches: [main, feature/phase-2-tdlib-auth, feature/phase-3-messaging, feature/phase-3-1-media, feature/phase-3-2-playback, feature/phase-3-3-cherry-inspired, feature/phase-3-4-read-receipts, feature/phase-3-5-typing-notifications, feature/phase-3-6-smart-notifications, feature/phase-3-7-media-compose, feature/phase-3-8-message-actions-calls, feature/phase-3-9-incoming-call-foundation, feature/phase-3-9-native-media-bootstrap, feature/phase-3-10-liquid-glass-calls, feature/phase-3-11-call-lifecycle, feature/phase-3-12-network-awareness]
   pull_request:
-    branches: [main, feature/phase-2-tdlib-auth, feature/phase-3-messaging, feature/phase-3-1-media, feature/phase-3-2-playback, feature/phase-3-3-cherry-inspired, feature/phase-3-4-read-receipts, feature/phase-3-5-typing-notifications, feature/phase-3-6-smart-notifications, feature/phase-3-7-media-compose, feature/phase-3-8-message-actions-calls, feature/phase-3-9-incoming-call-foundation, feature/phase-3-9-native-media-bootstrap, feature/phase-3-10-liquid-glass-calls, feature/phase-3-11-call-lifecycle]
+    branches: [main, feature/phase-2-tdlib-auth, feature/phase-3-messaging, feature/phase-3-1-media, feature/phase-3-2-playback, feature/phase-3-3-cherry-inspired, feature/phase-3-4-read-receipts, feature/phase-3-5-typing-notifications, feature/phase-3-6-smart-notifications, feature/phase-3-7-media-compose, feature/phase-3-8-message-actions-calls, feature/phase-3-9-incoming-call-foundation, feature/phase-3-9-native-media-bootstrap, feature/phase-3-10-liquid-glass-calls, feature/phase-3-11-call-lifecycle, feature/phase-3-12-network-awareness]
   workflow_dispatch:
 
 permissions:
@@ -45,5 +45,5 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: GLACIA-phase3-11-experimental-unconfigured-apk
+          name: GLACIA-phase3-12-experimental-unconfigured-apk
           path: app/build/outputs/apk/debug/app-debug.apk
