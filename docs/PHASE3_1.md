@@ -37,3 +37,19 @@ This experimental feature branch is based on `feature/phase-3-messaging`. It is 
 - Phase 3.4: performance, accessibility and glass animations after real-device validation.
 
 **Status:** CI and device QA required before merging.
+
+## v0.3.2 document-as-image fix
+
+Telegram can deliver JPG/PNG images as `MessageDocument` rather than `MessagePhoto` when users send images **as files**. This is legitimate Telegram behavior, not a text-message rendering failure.
+
+- Render a document thumbnail when TDLib supplies it, including images uploaded as document files.
+- **Download** explicitly requests the full original via TDLib; a lightweight preview never silently triggers original-file downloads.
+- After completion, JPEG/PNG image documents can be viewed inside GLACIA. **Save** opens Android's system file picker for JPG, ZIP, PDF and other documents.
+- The save flow reads only known, canonical app-private TDLib paths. It writes only to the user-selected destination using Android's Storage Access Framework; no broad storage permission is needed.
+- Download progress, an error message, and Retry are shown in the file card when available.
+- If an image is sent as a document without a thumbnail, the preview may be unavailable until the full file is explicitly downloaded.
+- Video streaming, ZIP archive extraction, auto-export to Downloads, and opening arbitrary downloaded files in third-party apps are **not** part of this increment.
+
+QA: Open a chat with .jpg documents and .zip attachments; confirm thumbnails when available, Download progress, View for downloaded images, Save As for images/ZIP, offline retry behavior, night/day themes and session persistence. Do not clear app data during upgrade.
+
+**Security reminder:** Exported files leave TDLib app-private storage. Open only files you trust, and do not automatically execute downloaded archives or programs.
