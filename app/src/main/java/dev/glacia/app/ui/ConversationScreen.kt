@@ -15,6 +15,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Send
 import androidx.compose.material.icons.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.Videocam
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -29,6 +31,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import dev.glacia.app.data.DocumentKind
+import dev.glacia.app.data.FileTransfer
 import dev.glacia.app.data.Chat
 import dev.glacia.app.data.Message
 import coil3.compose.AsyncImage
@@ -44,6 +49,8 @@ fun ConversationScreen(
     chat: Chat,
     messages: List<Message>,
     filePaths: Map<Int, String>,
+    documentTransfers: Map<Int, FileTransfer>,
+    onDownloadDocument: (Int) -> Unit,
     loading: Boolean,
     error: String?,
     dark: Boolean,
@@ -55,6 +62,8 @@ fun ConversationScreen(
     val secondary = if (dark) Color(0xFFC6D0E4) else Color(0xFF5D6981)
     val highlight = if (dark) Color(0xFF95E1FE) else Color(0xFF435EE3)
     val timelineState = rememberLazyListState()
+    val saveDocument = rememberSaveDocument()
+    var imageViewer by remember { mutableStateOf<String?>(null) }
     var newestSeen by remember(chat.id) { mutableLongStateOf(Long.MIN_VALUE) }
     var draft by rememberSaveable(chat.id) { mutableStateOf("") }
 
@@ -71,6 +80,31 @@ fun ConversationScreen(
         if (text.isNotBlank() && text.length <= 4096) {
             onSend(text)
             draft = ""
+        }
+    }
+
+    imageViewer?.let { imagePath ->
+        Dialog(onDismissRequest = { imageViewer = null }) {
+            Surface(
+                shape = RoundedCornerShape(22.dp),
+                color = if (dark) Color(0xFF15203A) else Color.White,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(Modifier.padding(12.dp)) {
+                    IconButton(
+                        onClick = { imageViewer = null },
+                        modifier = Modifier.align(Alignment.End)
+                    ) {
+                        Icon(Icons.Rounded.Close, "Close image", tint = foreground)
+                    }
+                    AsyncImage(
+                        model = File(imagePath),
+                        contentDescription = "Downloaded document image",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 540.dp)
+                    )
+                }
+            }
         }
     }
 
@@ -170,9 +204,26 @@ fun ConversationScreen(
                                 Spacer(Modifier.height(5.dp))
                             }
                             if (msg.mediaType == "document") {
+                                val attachmentId = msg.attachmentFileId
+                                val downloadedPath = attachmentId?.let(filePaths::get)
+                                val transfer = attachmentId?.let(documentTransfers::get)
+                                val isImage = DocumentKind.isImage(
+                                    msg.attachmentMime, msg.attachmentName
+                                )
+                                val imagePath = if (isImage) thumbnailPath ?: downloadedPath else null
+                                if (imagePath != null) {
+                                    AsyncImage(
+                                        model = File(imagePath),
+                                        contentDescription = "Document image preview",
+                                        contentScale = ContentScale.Fit,
+                                        modifier = Modifier.fillMaxWidth().height(172.dp)
+                                            .clip(RoundedCornerShape(15.dp))
+                                    )
+                                    Spacer(Modifier.height(8.dp))
+                                }
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier
+                                    modifier = Modifier.fillMaxWidth()
                                         .clip(RoundedCornerShape(14.dp))
                                         .background(highlight.copy(alpha = 0.13f))
                                         .padding(horizontal = 10.dp, vertical = 10.dp)
@@ -186,7 +237,8 @@ fun ConversationScreen(
                                     Spacer(Modifier.width(9.dp))
                                     Column(Modifier.weight(1f)) {
                                         Text(
-                                            msg.text.removePrefix("📄 ").ifBlank { "Document" },
+                                            msg.attachmentName?.takeIf { it.isNotBlank() }
+                                                ?: "Document",
                                             color = foreground,
                                             fontWeight = FontWeight.SemiBold,
                                             fontSize = 13.sp,
@@ -194,10 +246,57 @@ fun ConversationScreen(
                                             overflow = TextOverflow.Ellipsis
                                         )
                                         Text(
-                                            "File opening not available yet",
+                                            when {
+                                                downloadedPath != null -> "Ready on this device"
+                                                transfer?.downloading == true -> {
+                                                    val total = transfer.totalBytes
+                                                    if (total > 0L) {
+                                                        "${(transfer.downloadedBytes * 100L / total).coerceIn(0, 100)}% downloaded"
+                                                    } else "Downloading…"
+                                                }
+                                                transfer?.error != null -> transfer.error
+                                                else -> "Tap Download to save or view"
+                                            },
                                             color = secondary,
                                             fontSize = 10.sp
                                         )
+                                    }
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (downloadedPath != null) {
+                                        if (isImage) {
+                                            TextButton(onClick = { imageViewer = downloadedPath }) {
+                                                Text("View", color = highlight)
+                                            }
+                                        }
+                                        TextButton(onClick = {
+                                            saveDocument(
+                                                downloadedPath,
+                                                msg.attachmentName,
+                                                msg.attachmentMime
+                                            )
+                                        }) {
+                                            Text("Save", color = highlight)
+                                        }
+                                    } else if (attachmentId != null) {
+                                        TextButton(
+                                            onClick = { onDownloadDocument(attachmentId) },
+                                            enabled = transfer?.downloading != true
+                                        ) {
+                                            Icon(Icons.Rounded.Download, null,
+                                                Modifier.size(16.dp), tint = highlight)
+                                            Spacer(Modifier.width(4.dp))
+                                            Text(
+                                                if (transfer?.downloading == true) "Downloading"
+                                                else if (transfer?.error != null) "Retry"
+                                                else "Download",
+                                                color = highlight
+                                            )
+                                        }
                                     }
                                 }
                             } else {
