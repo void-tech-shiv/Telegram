@@ -765,6 +765,7 @@ private fun GlaciaApp(
                             session::refreshCoreSecurity,
                             session::terminateOtherTelegramSession,
                             session::unblockTelegramUser,
+                            session::updatePrivacyRule,
                             notificationPermission, onNotificationPermission,
                             onTestNotification, onOpenNotificationSettings,
                             notificationSetup, notificationEvents, notificationHealth,
@@ -1157,6 +1158,7 @@ private fun SettingsScreen(
     onRefreshSecurity: () -> Unit,
     onTerminateSession: (Long) -> Unit,
     onUnblock: (Long) -> Unit,
+    onPrivacyChange: (String, String) -> Unit,
     notificationPermission: Boolean,
     onNotificationPermission: () -> Unit,
     onTestNotification: () -> Boolean,
@@ -1206,7 +1208,8 @@ private fun SettingsScreen(
             state = coreSecurity,
             onRefresh = onRefreshSecurity,
             onTerminate = onTerminateSession,
-            onUnblock = onUnblock
+            onUnblock = onUnblock,
+            onPrivacyChange = onPrivacyChange
         )
         Spacer(Modifier.height(17.dp))
         Text("APPEARANCE", color = accent(dark),
