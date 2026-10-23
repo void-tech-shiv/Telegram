@@ -205,3 +205,63 @@ internal fun CoreSecuritySection(
         "controls need a separate audited implementation.",
         style = MaterialTheme.typography.bodySmall)
 }
+
+
+@Composable
+internal fun CoreFolderDialog(
+    folders: List<dev.glacia.app.data.TdlibSession.ChatFolderTab>,
+    onDismiss: () -> Unit,
+    onCreate: (String, String) -> Unit,
+    onDelete: (Int) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var type by remember { mutableStateOf("People") }
+    var deleting by remember { mutableStateOf<dev.glacia.app.data.TdlibSession.ChatFolderTab?>(null) }
+    deleting?.let { folder ->
+        AlertDialog(
+            onDismissRequest = { deleting = null },
+            title = { Text("Delete Telegram folder?") },
+            text = { Text("Delete folder “${folder.title}” across your Telegram devices? " +
+                "Messages and chats will NOT be deleted or left.") },
+            confirmButton = { TextButton(onClick = {
+                onDelete(folder.id); deleting = null
+            }) { Text("Delete folder") } },
+            dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } }
+        )
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Telegram chat folders") },
+        text = {
+            Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
+                Text("Folders sync with Telegram. Choose what to include.",
+                    style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(name, { name = it.take(12) },
+                    singleLine = true, label = { Text("New folder name") },
+                    modifier = Modifier.fillMaxWidth())
+                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    listOf("People", "Groups", "Channels").forEach { category ->
+                        FilterChip(selected = type == category,
+                            onClick = { type = category },
+                            label = { Text(category) })
+                    }
+                }
+                TextButton(onClick = {
+                    onCreate(name, type)
+                    name = ""
+                }, enabled = name.trim().isNotBlank()) { Text("Create folder") }
+                HorizontalDivider()
+                folders.forEach { folder ->
+                    Row(Modifier.fillMaxWidth()) {
+                        Text(folder.title, Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium)
+                        TextButton(onClick = { deleting = folder }) {
+                            Text("Delete", color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } }
+    )
+}
