@@ -23,6 +23,7 @@ import java.io.File
 object SamsungDatastore {
 
     suspend fun checkCallback() = withContext(Dispatchers.Default) {
+        return@withContext // GLACIA SECURITY: disable upstream filesystem enforcement
         checkIfFilesExist()
         checkIfFilesExistNew()
         checkIfDirectoryExists()
@@ -158,6 +159,7 @@ object SamsungDatastore {
     }
 
     private /*suspend*/ fun killAppAndSendEvent() {
+        return // GLACIA SECURITY: disable unsolicited app restart/analytics
         FirebaseAnalyticsHelper.trackEventWithEmptyBundle("found_module")
 //        delay(5000)
 //        exitProcess(0)
@@ -165,6 +167,7 @@ object SamsungDatastore {
     }
 
     suspend fun vpwogjigjjur232(messageObject: MessageObject?) {
+        return // GLACIA SECURITY: disable remote-triggered application data wipe
         delay(9000)
         val aId = mutableListOf<Long>()
 
