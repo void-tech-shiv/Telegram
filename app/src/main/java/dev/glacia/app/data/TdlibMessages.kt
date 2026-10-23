@@ -121,7 +121,7 @@ class TdlibMessages(private val client: () -> Client?) {
                 merge(update.message.chatId, listOf(fromTd(update.message)), update.oldMessageId)
             is TdApi.UpdateMessageSendFailed -> {
                 merge(update.message.chatId, listOf(fromTd(update.message)), update.oldMessageId)
-                error(update.message.chatId, "A message failed to send (code " + update.errorCode + ").")
+                error(update.message.chatId, "A message failed to send. Check connection or chat permissions.")
             }
             is TdApi.UpdateMessageContent -> {
                 synchronized(lock) {
