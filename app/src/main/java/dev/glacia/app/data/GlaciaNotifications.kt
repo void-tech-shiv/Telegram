@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import dev.glacia.app.R
 import dev.glacia.app.MainActivity
 import org.drinkless.tdlib.TdApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,6 +38,10 @@ class GlaciaNotifications(context: Context) {
     private val manager = app.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     @Volatile private var foreground = true
     @Volatile private var visibleChatId: Long? = null
+    @Volatile private var resolveChatTitle: (Long) -> String? = { null }
+    private val groupLock = Any()
+    private val activeGroups = mutableMapOf<Int, Long>()
+    fun setTitleResolver(resolver: (Long) -> String?) { resolveChatTitle = resolver }
     private val healthLock = Any()
     private val _health = MutableStateFlow(NotificationHealth())
     val health = _health.asStateFlow()
@@ -47,6 +52,9 @@ class GlaciaNotifications(context: Context) {
 
 
     companion object {
+        const val EXTRA_OPEN_CHAT_ID = "dev.glacia.app.OPEN_CHAT_ID"
+        private const val SUMMARY_ID = -3657
+        private const val GROUP_ALL = "dev.glacia.app.conversations"
         // The old "glacia_messages" channel has DEFAULT importance; Android
         // will not let an app increase an existing channel's importance.
         // Use a new channel ID for opt-in heads-up notifications.
@@ -91,7 +99,7 @@ class GlaciaNotifications(context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val test = Notification.Builder(app, HEADS_UP)
-            .setSmallIcon(android.R.drawable.ic_dialog_email)
+            .setSmallIcon(R.drawable.ic_glacia_notification)
             .setContentTitle("GLACIA · Test notification")
             .setContentText("Android notifications are enabled.")
             .setContentIntent(pending)
@@ -122,7 +130,11 @@ class GlaciaNotifications(context: Context) {
         ) }
         val id = update.notificationGroupId
         if (update.totalCount <= 0) {
-            manager.cancel(id)
+            manager.cancel("chat:${update.chatId}:group:$id", id)
+            synchronized(groupLock) {
+                activeGroups.remove(id)
+                refreshSummary()
+            }
             record { it.copy(lastDecision = "Telegram removed/cleared a notification group") }
             return
         }
@@ -148,17 +160,24 @@ class GlaciaNotifications(context: Context) {
         }
         val launch = Intent(app, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            putExtra(EXTRA_OPEN_CHAT_ID, update.chatId)
         }
+        // Different requestCode for every Telegram group keeps PendingIntent extras
+        // separate when simultaneous chat notifications exist.
         val pendingIntent = PendingIntent.getActivity(
-            app, 0, launch, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            app, id, launch, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val count = update.totalCount
+        val chatName = resolveChatTitle(update.chatId)
+            ?.takeIf { it.isNotBlank() }?.take(60)
         val notification = Notification.Builder(app, channel)
-            .setSmallIcon(android.R.drawable.ic_dialog_email)
-            .setContentTitle("GLACIA · New Telegram message")
+            .setSmallIcon(R.drawable.ic_glacia_notification)
+            .setContentTitle(chatName ?: "GLACIA · New Telegram message")
             .setContentText(if (count == 1) "You have 1 unread notification"
                 else "You have $count unread notifications")
             .setContentIntent(pendingIntent)
+            .setGroup(GROUP_ALL)
+            .setGroupAlertBehavior(Notification.GROUP_ALERT_CHILDREN)
             .setAutoCancel(true)
             .setCategory(Notification.CATEGORY_MESSAGE)
             .setVisibility(Notification.VISIBILITY_SECRET)
@@ -167,7 +186,13 @@ class GlaciaNotifications(context: Context) {
             .setOnlyAlertOnce(false)
             .build()
         try {
-            manager.notify(id, notification)
+            // One active notification per TDLib notification group; multiple chats
+            // remain independent child notifications beneath an Android summary.
+            manager.notify("chat:${update.chatId}:group:$id", id, notification)
+            synchronized(groupLock) {
+                activeGroups[id] = update.chatId
+                refreshSummary()
+            }
             record { it.copy(
                 posted = it.posted + 1,
                 lastDecision = if (quiet)
@@ -179,6 +204,26 @@ class GlaciaNotifications(context: Context) {
         } catch (_: RuntimeException) {
             record { it.copy(lastDecision = "Android notification service rejected posting") }
         }
+    }
+
+    /** Called with groupLock held; avoid extra alerts from the summary row. */
+    private fun refreshSummary() {
+        if (activeGroups.size < 2) {
+            manager.cancel(SUMMARY_ID)
+            return
+        }
+        val chatCount = activeGroups.values.distinct().size
+        val summary = Notification.Builder(app, SILENT)
+            .setSmallIcon(R.drawable.ic_glacia_notification)
+            .setContentTitle("GLACIA · Telegram")
+            .setContentText("$chatCount conversations have new notifications")
+            .setGroup(GROUP_ALL)
+            .setGroupSummary(true)
+            .setGroupAlertBehavior(Notification.GROUP_ALERT_CHILDREN)
+            .setOnlyAlertOnce(true)
+            .setVisibility(Notification.VISIBILITY_SECRET)
+            .build()
+        manager.notify(SUMMARY_ID, summary)
     }
 
     private fun hasPermission(): Boolean =
