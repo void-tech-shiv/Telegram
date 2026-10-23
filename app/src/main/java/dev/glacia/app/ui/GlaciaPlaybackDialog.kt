@@ -23,6 +23,9 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.delay
 import java.io.File
 
@@ -40,6 +43,7 @@ fun GlaciaPlaybackDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val trustedFile = remember(path) { verifiedPlaybackFile(context, path) }
     if (trustedFile == null) {
         AlertDialog(
@@ -57,8 +61,15 @@ fun GlaciaPlaybackDialog(
             playWhenReady = true // user deliberately opened this player
         }
     }
-    DisposableEffect(player) {
+    DisposableEffect(lifecycleOwner, player) {
+        val observer = LifecycleEventObserver { _, event ->
+            // Media playback belongs to the foreground conversation only.
+            // It must not continue audio output behind other apps.
+            if (event == Lifecycle.Event.ON_STOP) player.pause()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
             player.stop()
             player.release()
         }
