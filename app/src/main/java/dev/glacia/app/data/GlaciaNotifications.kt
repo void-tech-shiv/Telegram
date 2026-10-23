@@ -131,6 +131,11 @@ class GlaciaNotifications(context: Context) {
         }
         val quiet = update.notificationSoundId == 0L
         val channel = if (quiet) SILENT else MESSAGES
+        if (manager.getNotificationChannel(channel)?.importance ==
+            NotificationManager.IMPORTANCE_NONE) {
+            record { it.copy(lastDecision = "Android message channel disabled: $channel") }
+            return
+        }
         val launch = Intent(app, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         }
