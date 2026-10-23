@@ -90,6 +90,7 @@ class TdlibSession(private val context: Context) {
         coreAccount.saveProfile(first, last, bio)
     fun openContactChat(userId: Long, onChat: (Long) -> Unit) =
         coreAccount.openContact(userId, onChat)
+    fun openSavedMessages(onChat: (Long) -> Unit) = coreAccount.openSavedMessages(onChat)
     fun clearAccountNotice() = coreAccount.clearNotice()
     private val typing = TdlibTyping { client }
     private val notifications = GlaciaNotifications(context)
