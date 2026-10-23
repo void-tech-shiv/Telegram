@@ -47,9 +47,8 @@ class TdlibExpressions(
         val thumbnail = if (sticker.format is TdApi.StickerFormatWebp)
             file else sticker.thumbnail?.file
         files.ensure(thumbnail)
-        // Tiny TGS/WebM originals need to be present for actual playback,
-        // otherwise user can explicitly request from the message bubble.
-        files.ensureSmallSticker(file)
+        // Picker fetches only small static preview files. Bulk-loading a
+        // sticker pack must never download 120 full TGS/WebM originals.
         return ExpressionOption(
             file.id, thumbnail?.id, ExpressionPolicy.normalizedEmoji(sticker.emoji)
         )
