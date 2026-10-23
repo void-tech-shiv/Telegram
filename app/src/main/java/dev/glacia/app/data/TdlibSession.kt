@@ -65,6 +65,14 @@ class TdlibSession(private val context: Context) {
     }
     private val _chats = MutableStateFlow<List<Chat>>(emptyList())
     val chats = _chats.asStateFlow()
+    private val _archivedChats = MutableStateFlow<List<Chat>>(emptyList())
+    val archivedChats = _archivedChats.asStateFlow()
+    private val _chatActionBusy = MutableStateFlow<Set<Long>>(emptySet())
+    val chatActionBusy = _chatActionBusy.asStateFlow()
+    private val _chatActionError = MutableStateFlow<String?>(null)
+    val chatActionError = _chatActionError.asStateFlow()
+    fun dismissChatActionError() { _chatActionError.value = null }
+    private val chatActionLock = Any()
     private val known = linkedMapOf<Long, TdApi.Chat>()
     private val missingTitleRefreshes = mutableSetOf<Long>()
     private val _outboxRead = MutableStateFlow<Map<Long, Long>>(emptyMap())
@@ -160,6 +168,63 @@ class TdlibSession(private val context: Context) {
                 }
             } else {
                 _muteFeedback.value = null
+            }
+        }
+    }
+
+    /**
+     * Telegram-synced chat list actions. Do not fake a successful local move:
+     * final list order and pin state are driven by TDLib UpdateChatPosition.
+     * A pending request is de-duplicated by chat ID and cannot spam Telegram.
+     */
+    fun setChatArchived(chatId: Long, archive: Boolean) {
+        val active = client ?: run {
+            _chatActionError.value = "Telegram connection unavailable."
+            return
+        }
+        val chat = synchronized(known) { known[chatId] } ?: return
+        val currentlyArchived = chat.positions.any {
+            it.list is TdApi.ChatListArchive && it.order > 0L
+        }
+        if (archive == currentlyArchived) return
+        synchronized(chatActionLock) {
+            if (chatId in _chatActionBusy.value) return
+            _chatActionBusy.value = _chatActionBusy.value + chatId
+        }
+        val target: TdApi.ChatList = if (archive) TdApi.ChatListArchive() else TdApi.ChatListMain()
+        active.send(TdApi.SetChatChatList(chatId, target)) { result ->
+            synchronized(chatActionLock) { _chatActionBusy.value = _chatActionBusy.value - chatId }
+            if (result is TdApi.Error) {
+                _chatActionError.value = "Archive change failed (Telegram code ${result.code})."
+            }
+        }
+    }
+
+    fun toggleChatPinned(chatId: Long) {
+        val active = client ?: run {
+            _chatActionError.value = "Telegram connection unavailable."
+            return
+        }
+        val chat = synchronized(known) { known[chatId] } ?: return
+        val position = chat.positions.firstOrNull {
+            it.order > 0L && (it.list is TdApi.ChatListMain || it.list is TdApi.ChatListArchive)
+        } ?: return
+        synchronized(chatActionLock) {
+            if (chatId in _chatActionBusy.value) return
+            _chatActionBusy.value = _chatActionBusy.value + chatId
+        }
+        active.send(TdApi.ToggleChatIsPinned(position.list, chatId, !position.isPinned)) { result ->
+            synchronized(chatActionLock) { _chatActionBusy.value = _chatActionBusy.value - chatId }
+            if (result is TdApi.Error) {
+                _chatActionError.value = "Pin change failed (Telegram code ${result.code})."
+            }
+        }
+    }
+
+    fun loadArchivedChats() {
+        client?.send(TdApi.LoadChats(TdApi.ChatListArchive(), 100)) { result ->
+            if (result is TdApi.Error && result.code != 404) {
+                _chatActionError.value = "Could not sync archived chats (Telegram code ${result.code})."
             }
         }
     }
@@ -463,8 +528,14 @@ class TdlibSession(private val context: Context) {
             is TdApi.UpdateChatPosition -> synchronized(known) {
                 val chat = known[obj.chatId]
                 if (chat != null) {
-                    chat.positions = chat.positions.filterNot { it.list is TdApi.ChatListMain }.toTypedArray() +
-                        obj.position
+                    // Remove only the position from this list. In particular,
+                    // archive updates must not accidentally discard Main/folders.
+                    val position = obj.position
+                    val existing = chat.positions.filterNot { old ->
+                        (position.list is TdApi.ChatListMain && old.list is TdApi.ChatListMain) ||
+                            (position.list is TdApi.ChatListArchive && old.list is TdApi.ChatListArchive)
+                    }
+                    chat.positions = (existing + position).toTypedArray()
                     emitChats()
                 }
             }
@@ -529,6 +600,7 @@ class TdlibSession(private val context: Context) {
                         ?.let(::registerPushToken)
                 }
                 request(TdApi.LoadChats(TdApi.ChatListMain(), 100), "Chat sync")
+                loadArchivedChats()
             }
             is TdApi.AuthorizationStateClosed -> {
                 messaging.clear()
@@ -548,7 +620,10 @@ class TdlibSession(private val context: Context) {
                     _chatMuteStates.value = emptyMap()
                     missingTitleRefreshes.clear()
                     _chats.value = emptyList()
+                    _archivedChats.value = emptyList()
                 }
+                synchronized(chatActionLock) { _chatActionBusy.value = emptySet() }
+                _chatActionError.value = null
                 client = null
                 publishAuth(Auth.Starting)
             }
@@ -578,45 +653,58 @@ class TdlibSession(private val context: Context) {
     }
 
     private fun emitChats() {
-        _chats.value = known.values.asSequence()
-            .map { chat ->
-                val mainOrder = chat.positions
-                    .filter { it.list is TdApi.ChatListMain }
-                    .maxOfOrNull { it.order } ?: 0L
-                chat to mainOrder
+        fun mapChat(chat: TdApi.Chat, archived: Boolean, pinned: Boolean): Chat {
+            val preview = when (val content = chat.lastMessage?.content) {
+                is TdApi.MessageText -> ChatPreviewPrivacy.safePreview(content.text?.text.orEmpty())
+                is TdApi.MessagePhoto -> "📷 Photo"
+                is TdApi.MessageVideo -> "🎥 Video"
+                is TdApi.MessageVoiceNote -> "🎤 Voice note"
+                is TdApi.MessageVideoNote -> "🎬 Video note"
+                is TdApi.MessageAudio -> "🎵 Audio"
+                is TdApi.MessageDocument -> "📄 Document"
+                is TdApi.MessageSticker -> "🎨 Sticker"
+                is TdApi.MessageAnimation -> "🎞 GIF"
+                is TdApi.MessagePoll -> "📊 Poll"
+                is TdApi.MessageLocation -> "📍 Location"
+                is TdApi.MessageCall -> if (content.isVideo) "📹 Video call" else "📞 Voice call"
+                null -> "No messages"
+                else -> "Other message"
             }
-            .filter { it.second > 0L }
-            .sortedWith(compareByDescending<Pair<TdApi.Chat, Long>> { it.second }
-                .thenByDescending { it.first.id })
-            .map { (chat, _) ->
-                val preview = when (val content = chat.lastMessage?.content) {
-                    is TdApi.MessageText -> ChatPreviewPrivacy.safePreview(content.text?.text.orEmpty())
-                    is TdApi.MessagePhoto -> "📷 Photo"
-                    is TdApi.MessageVideo -> "🎥 Video"
-                    is TdApi.MessageVoiceNote -> "🎤 Voice note"
-                    is TdApi.MessageVideoNote -> "🎬 Video note"
-                    is TdApi.MessageAudio -> "🎵 Audio"
-                    is TdApi.MessageDocument -> "📄 Document"
-                    is TdApi.MessageSticker -> "🎨 Sticker"
-                    is TdApi.MessageAnimation -> "🎞 GIF"
-                    is TdApi.MessagePoll -> "📊 Poll"
-                    null -> "No messages"
-                    else -> "Other message"
+            fileStore.ensure(chat.photo?.small)
+            requestMissingTitle(chat)
+            return Chat(
+                id = chat.id,
+                title = fallbackChatTitle(chat),
+                username = "",
+                preview = preview,
+                time = "",
+                unread = chat.unreadCount,
+                isGroup = chat.type is TdApi.ChatTypeBasicGroup ||
+                    chat.type is TdApi.ChatTypeSupergroup,
+                pinned = pinned,
+                photoFileId = chat.photo?.small?.id,
+                archived = archived
+            )
+        }
+
+        fun buildList(archive: Boolean): List<Chat> {
+            return known.values.asSequence()
+                .mapNotNull { chat ->
+                    val candidate = chat.positions
+                        .filter { pos ->
+                            pos.order > 0L &&
+                                (if (archive) pos.list is TdApi.ChatListArchive
+                                else pos.list is TdApi.ChatListMain)
+                        }.maxByOrNull { it.order }
+                    candidate?.let { position -> Triple(chat, position.order, position.isPinned) }
                 }
-                fileStore.ensure(chat.photo?.small)
-                requestMissingTitle(chat)
-                Chat(
-                    id = chat.id,
-                    title = fallbackChatTitle(chat),
-                    username = "",
-                    preview = preview,
-                    time = "",
-                    unread = chat.unreadCount,
-                    isGroup = chat.type is TdApi.ChatTypeBasicGroup ||
-                        chat.type is TdApi.ChatTypeSupergroup,
-                    photoFileId = chat.photo?.small?.id
-                )
-            }.toList()
+                .sortedWith(compareByDescending<Triple<TdApi.Chat, Long, Boolean>> { it.third }
+                    .thenByDescending { it.second }.thenByDescending { it.first.id })
+                .map { (chat, _, pinned) -> mapChat(chat, archive, pinned) }
+                .toList()
+        }
+        _chats.value = buildList(false)
+        _archivedChats.value = buildList(true)
     }
 
     fun submitPhone(phone: String) {
