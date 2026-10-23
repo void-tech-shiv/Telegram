@@ -17,6 +17,12 @@
   shown safely without tearing down the call. Flip has NOT been tested on device.
 - Shows a 1-second-resolution call duration after native `CONNECTED` using
   Android's monotonic `elapsedRealtime`, not since user pressed Call.
+- Simple on-demand Bluetooth headset routing on Android 12+: asks for
+  `BLUETOOTH_CONNECT` only when user presses Bluetooth in an active call,
+  chooses an already-connected SCO/BLE communication device through Android's
+  `AudioManager.setCommunicationDevice`, and cleans up on hangup.
+  No automatic pairing, headset discovery or older-Android Bluetooth fallback.
+- Subtle pulsing aurora effect for voice calls. Call buttons have accessible labels.
 - Call overlay cannot be dismissed by accidental Back/outside tap. The Hang up
   button remains the explicit way to end an ongoing Telegram call.
 - TDLib authentication, signaling, audio/video encoding, ICE servers, and key
@@ -79,13 +85,18 @@ Expect `versionName=0.3.15`.
   and allows placing another call without camera/mic conflict.
 - [ ] OnePlus Nord 3 real device: verify local capture pipeline, hardware camera
   enumeration and frame rotation, speaker audio with Bluetooth connected.
+- [ ] Bluetooth button (Android 12+): permission accepted, paired headset
+  actually selected, audio audible both ways; deny/revoke permission or unplug
+  headset and verify no call crash. Speaker button must switch back.
 - [ ] Wi-Fi vs mobile data call duration and reconnection behavior.
 - [ ] Regress Phase 3.9 sending voice messages, attachments, notifications,
   login reuse and normal chat navigation.
 
 ## Explicit limitations
 
-- Bluetooth headset-specific audio routing, foreground ongoing call service,
+- Bluetooth headset selection is basic and not yet verified on device; there
+  is no automatic reconnect, multipoint management, Android 11 Bluetooth
+  fallback or headset-button support. Foreground ongoing call service,
   background wake-up/answer, camera/mic interruptions, picture-in-picture,
   screen sharing, polished video quality adaptation, and Telecom integration
   are **not** included here. Do not advertise them as working.
