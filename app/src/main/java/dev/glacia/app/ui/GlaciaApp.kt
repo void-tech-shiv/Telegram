@@ -30,6 +30,9 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.NotificationsActive
+import androidx.compose.material.icons.rounded.NotificationsOff
+import androidx.compose.animation.animateContentSize
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -71,7 +74,10 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 
 @Composable
-fun GlaciaRoot() {
+fun GlaciaRoot(
+    notificationChatId: Long? = null,
+    onNotificationChatHandled: (Long) -> Unit = {}
+) {
     val context = LocalContext.current.applicationContext
     val preferences = remember(context) { ThemePreferences(context) }
     val theme by preferences.theme.collectAsState(initial = ThemeChoice.SYSTEM)
@@ -121,6 +127,8 @@ fun GlaciaRoot() {
             GlaciaApp(
                 dark = dark,
                 selectedTheme = theme,
+                notificationChatId = notificationChatId,
+                onNotificationChatHandled = onNotificationChatHandled,
                 liveChats = realChats,
                 session = session,
                 photoPaths = photoPaths,
@@ -162,7 +170,8 @@ private fun GlassPanel(
     val shape = RoundedCornerShape(radius)
     Box(
         modifier = modifier
-            .clip(shape)
+.clip(shape)
+            .animateContentSize()
             .hazeGlass(input = HazeInput.Backdrop(hazeState), style = GlassStyle.regular)
             .background(if (dark) Color(0xB8172544) else Color(0xCCFFFFFF))
             .border(
@@ -178,6 +187,8 @@ private fun GlassPanel(
 private fun GlaciaApp(
     dark: Boolean,
     selectedTheme: ThemeChoice,
+    notificationChatId: Long?,
+    onNotificationChatHandled: (Long) -> Unit,
     liveChats: List<Chat>,
     session: TdlibSession,
     photoPaths: Map<Int, String>,
@@ -196,7 +207,21 @@ private fun GlaciaApp(
     val discovered by session.discoveryResults.collectAsState()
     val discovering by session.discoveryLoading.collectAsState()
     val discoveryError by session.discoveryError.collectAsState()
-    val current = (liveChats + discovered).firstOrNull { it.id == openChatId }
+    val notificationTarget by session.notificationTargetChat.collectAsState()
+    val chatMuteStates by session.chatMuteStates.collectAsState()
+    LaunchedEffect(notificationChatId, notificationTarget?.id, liveChats) {
+        val id = notificationChatId ?: return@LaunchedEffect
+        if (id == 0L) return@LaunchedEffect
+        if (liveChats.none { it.id == id } && notificationTarget?.id != id) {
+            session.ensureChat(id)
+        } else {
+            tab = "Chats"
+            openChatId = id
+            onNotificationChatHandled(id)
+        }
+    }
+    val current = (liveChats + discovered + listOfNotNull(notificationTarget))
+        .firstOrNull { it.id == openChatId }
     DisposableEffect(session, current?.id) {
         session.setVisibleChat(current?.id)
         onDispose { session.setVisibleChat(null) }
@@ -273,6 +298,19 @@ private fun GlaciaApp(
                                 } else "Telegram • Live messages",
                                 color = if (typingNow) accent(dark) else mutedInk(dark),
                                 fontSize = 11.sp
+                            )
+                        }
+                        val muted = chatMuteStates[current.id] == true
+                        IconButton(
+                            onClick = { session.setChatMuted(current.id, !muted) }
+                        ) {
+                            Icon(
+                                if (muted) Icons.Rounded.NotificationsOff
+                                else Icons.Rounded.NotificationsActive,
+                                contentDescription =
+                                    if (muted) "Unmute this Telegram chat"
+                                    else "Mute this Telegram chat",
+                                tint = if (muted) mutedInk(dark) else accent(dark)
                             )
                         }
                     } else {
