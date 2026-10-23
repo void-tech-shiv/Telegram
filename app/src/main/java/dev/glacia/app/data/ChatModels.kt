@@ -9,7 +9,8 @@ data class Chat(
     val unread: Int = 0,
     val isOnline: Boolean = false,
     val isGroup: Boolean = false,
-    val pinned: Boolean = false
+    val pinned: Boolean = false,
+    val photoFileId: Int? = null
 )
 
 data class Message(
@@ -20,7 +21,9 @@ data class Message(
     val outgoing: Boolean,
     val date: Int = 0,
     val sending: Boolean = false,
-    val failed: Boolean = false
+    val failed: Boolean = false,
+    val mediaType: String? = null,
+    val mediaFileId: Int? = null
 )
 
 interface ChatRepository {
