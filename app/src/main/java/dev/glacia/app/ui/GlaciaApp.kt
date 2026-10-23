@@ -97,6 +97,15 @@ fun GlaciaRoot() {
     val permissionRequest = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted -> notificationsAllowed = granted }
+    DisposableEffect(lifecycleOwner) {
+        val permissionObserver = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                notificationsAllowed = session.notificationsAllowed()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(permissionObserver)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(permissionObserver) }
+    }
     DisposableEffect(session) {
         session.start()
         onDispose { session.close() }
@@ -113,6 +122,7 @@ fun GlaciaRoot() {
                 session = session,
                 photoPaths = photoPaths,
                 notificationPermission = notificationsAllowed,
+                onTestNotification = { session.sendTestNotification() },
                 onNotificationPermission = {
                     if (Build.VERSION.SDK_INT >= 33 && !notificationsAllowed) {
                         permissionRequest.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -162,6 +172,7 @@ private fun GlaciaApp(
     session: TdlibSession,
     photoPaths: Map<Int, String>,
     notificationPermission: Boolean,
+    onTestNotification: () -> Boolean,
     onNotificationPermission: () -> Unit,
     onThemeChange: (ThemeChoice) -> Unit
 ) {
@@ -181,6 +192,8 @@ private fun GlaciaApp(
     val messageErrors by session.messageErrors.collectAsState()
     val outboxRead by session.outboxRead.collectAsState()
     val typingByChat by session.typingActivities.collectAsState()
+    val notificationSetup by session.notificationSetup.collectAsState()
+    val notificationEvents by session.notificationEvents.collectAsState()
     LaunchedEffect(current?.id) {
         if (current == null) return@LaunchedEffect
         while (true) {
@@ -315,7 +328,8 @@ private fun GlaciaApp(
                         )
                         else -> SettingsScreen(
                             selectedTheme, dark, onThemeChange,
-                            notificationPermission, onNotificationPermission
+                            notificationPermission, onNotificationPermission,
+                            onTestNotification, notificationSetup, notificationEvents
                         )
                     }
                 }
@@ -605,8 +619,12 @@ private fun SettingsScreen(
     dark: Boolean,
     onSelect: (ThemeChoice) -> Unit,
     notificationPermission: Boolean,
-    onNotificationPermission: () -> Unit
+    onNotificationPermission: () -> Unit,
+    onTestNotification: () -> Boolean,
+    notificationSetup: String,
+    notificationEvents: Int
 ) {
+    var notificationTestResult by remember { mutableStateOf<String?>(null) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())
         .padding(horizontal = 23.dp, vertical = 18.dp)) {
         Text("Appearance", color = ink(dark), fontSize = 29.sp, fontWeight = FontWeight.Bold)
@@ -649,8 +667,30 @@ private fun SettingsScreen(
                 Text("Allow notifications", color = accent(dark))
             }
         }
+        if (notificationPermission) {
+            TextButton(onClick = {
+                notificationTestResult = if (onTestNotification()) {
+                    "Test posted. Open Android's notification shade to see it."
+                } else {
+                    "Android is blocking notifications. Check app notification settings."
+                }
+            }) {
+                Text("Send test notification", color = accent(dark))
+            }
+        }
+        notificationTestResult?.let { result ->
+            Text(result, color = mutedInk(dark), fontSize = 12.sp)
+            Spacer(Modifier.height(5.dp))
+        }
+        Text(notificationSetup, color = mutedInk(dark), fontSize = 12.sp)
         Text(
-            "Only while GLACIA remains running. Lock-screen previews hide message content.",
+            "TDLib notification updates received: $notificationEvents",
+            color = mutedInk(dark), fontSize = 12.sp
+        )
+        Spacer(Modifier.height(7.dp))
+        Text(
+            "Message alerts appear while GLACIA is in the background and its process is running. " +
+                "Foreground messages won't show an Android alert. Lock-screen previews hide content.",
             color = mutedInk(dark), fontSize = 12.sp
         )
         Spacer(Modifier.height(24.dp))
