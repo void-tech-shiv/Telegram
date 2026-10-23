@@ -23,7 +23,10 @@ data class Message(
     val sending: Boolean = false,
     val failed: Boolean = false,
     val mediaType: String? = null,
-    val mediaFileId: Int? = null
+    val mediaFileId: Int? = null,
+    val attachmentFileId: Int? = null,
+    val attachmentName: String? = null,
+    val attachmentMime: String? = null
 )
 
 interface ChatRepository {
