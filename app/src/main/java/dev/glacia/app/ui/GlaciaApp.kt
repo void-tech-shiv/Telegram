@@ -32,6 +32,7 @@ import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.Call
+import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.animateColorAsState
@@ -236,6 +237,86 @@ private fun GlaciaApp(
     val current = (liveChats + discovered + listOfNotNull(notificationTarget))
         .firstOrNull { it.id == openChatId }
     var callHandoffPrompt by remember(current?.id) { mutableStateOf(false) }
+
+    // Runtime permissions are requested only after an explicit user action.
+    // No permission grant = no native call (and no remote ringing).
+    val deviceContext = LocalContext.current
+    var pendingNativeAction by remember { mutableStateOf<Pair<Long, Boolean>?>(null) }
+    val nativePermissions = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        val action = pendingNativeAction
+        pendingNativeAction = null
+        if (action != null && results.values.all { it } && results.isNotEmpty()) {
+            if (action.first == 0L) session.answerNativeCall()
+            else session.startNativeCall(action.first, action.second)
+        }
+    }
+    fun requestNativeAction(chatId: Long, video: Boolean) {
+        val permissions = if (video) {
+            arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA)
+        } else arrayOf(Manifest.permission.RECORD_AUDIO)
+        if (permissions.all {
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                deviceContext, it
+            ) == PackageManager.PERMISSION_GRANTED
+        }) {
+            if (chatId == 0L) session.answerNativeCall()
+            else session.startNativeCall(chatId, video)
+        } else {
+            pendingNativeAction = chatId to video
+            nativePermissions.launch(permissions)
+        }
+    }
+
+    val inAppCall by session.nativeCall.collectAsState()
+    val inAppCallNotice by session.nativeCallNotice.collectAsState()
+    inAppCallNotice?.let { notice ->
+        AlertDialog(
+            onDismissRequest = session::dismissNativeCallNotice,
+            title = { Text("Native calling") },
+            text = { Text(notice) },
+            confirmButton = {
+                TextButton(onClick = session::dismissNativeCallNotice) { Text("OK") }
+            }
+        )
+    }
+    inAppCall?.let { running ->
+        AlertDialog(
+            onDismissRequest = { /* Ongoing native sessions require Hang up. */ },
+            title = { Text(if (running.video) "GLACIA video call" else "GLACIA voice call") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(running.peer, fontWeight = FontWeight.SemiBold)
+                    Text(running.phase)
+                    running.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    if (running.video && running.phase == "Connected") {
+                        NativeCallVideo(session.remoteCallFrames, running.callId)
+                    }
+                    if (running.phase == "Connected") {
+                        Row {
+                            TextButton(onClick = { session.muteNativeCall(!running.muted) }) {
+                                Text(if (running.muted) "Unmute mic" else "Mute mic")
+                            }
+                            TextButton(onClick = { session.speakerNativeCall(!running.speaker) }) {
+                                Text(if (running.speaker) "Earpiece" else "Speaker")
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                if (!running.outgoing && running.phase == "Incoming") {
+                    TextButton(onClick = { requestNativeAction(0L, running.video) }) {
+                        Text("Answer in GLACIA")
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = session::hangupNativeCall) { Text("Hang up / Decline") }
+            }
+        )
+    }
     if (callHandoffPrompt && current != null) {
         AlertDialog(
             onDismissRequest = { callHandoffPrompt = false },
@@ -308,7 +389,7 @@ private fun GlaciaApp(
     var ignoredCallId by remember { mutableIntStateOf(-1) }
     var officialAppMissing by remember(incomingCall?.callId) { mutableStateOf(false) }
     incomingCall?.let { ringing ->
-        if (resumed && ignoredCallId != ringing.callId) {
+        if (!session.nativeCallingEnabled && resumed && ignoredCallId != ringing.callId) {
             AlertDialog(
                 onDismissRequest = { ignoredCallId = ringing.callId },
                 title = {
@@ -387,7 +468,14 @@ private fun GlaciaApp(
                                 fontSize = 11.sp
                             )
                         }
-                        if (!current.isGroup) {
+                        if (!current.isGroup && session.nativeCallingEnabled) {
+                            IconButton(onClick = { requestNativeAction(current.id, false) }) {
+                                Icon(Icons.Rounded.Call, "Start native voice call", tint = accent(dark))
+                            }
+                            IconButton(onClick = { requestNativeAction(current.id, true) }) {
+                                Icon(Icons.Rounded.Videocam, "Start native video call", tint = accent(dark))
+                            }
+                        } else if (!current.isGroup) {
                             IconButton(onClick = { callHandoffPrompt = true }) {
                                 Icon(
                                     Icons.Rounded.Call,
