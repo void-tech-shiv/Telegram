@@ -179,11 +179,28 @@ internal fun CoreSecuritySection(
     state: CoreSecurityState,
     onRefresh: () -> Unit,
     onTerminate: (Long) -> Unit,
-    onUnblock: (Long) -> Unit
+    onUnblock: (Long) -> Unit,
+    onPrivacyChange: (String, String) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
     var revokeId by remember { mutableStateOf<Long?>(null) }
     var unblockId by remember { mutableStateOf<Long?>(null) }
+    var pendingPrivacy by remember { mutableStateOf<Pair<String, String>?>(null) }
+    pendingPrivacy?.let { (setting, audience) ->
+        AlertDialog(
+            onDismissRequest = { pendingPrivacy = null },
+            title = { Text("Change Telegram privacy?") },
+            text = { Text("Set $setting to $audience? Existing per-user/chat exceptions " +
+                "are preserved where supported. This changes your Telegram account.") },
+            confirmButton = { TextButton(onClick = {
+                onPrivacyChange(setting, audience)
+                pendingPrivacy = null
+            }) { Text("Apply") } },
+            dismissButton = { TextButton(onClick = { pendingPrivacy = null }) {
+                Text("Cancel")
+            } }
+        )
+    }
     if (revokeId != null) AlertDialog(
         onDismissRequest = { revokeId = null },
         title = { Text("Sign out this other device?") },
@@ -212,6 +229,19 @@ internal fun CoreSecuritySection(
     if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
     state.notice?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
     TextButton(onClick = onRefresh) { Text("Refresh Telegram security status") }
+    Text("Privacy rules", style = MaterialTheme.typography.titleSmall)
+    listOf("Last seen", "Phone number", "Voice/video calls").forEach { key ->
+        Text("$key: ${state.privacy[key] ?: "Loading…"}",
+            style = MaterialTheme.typography.bodySmall)
+        Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            listOf("Everyone", "My contacts", "Nobody").forEach { audience ->
+                TextButton(onClick = { pendingPrivacy = key to audience }) {
+                    Text(audience, style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
+    }
+    HorizontalDivider()
     Text("Logged-in Telegram devices", style = MaterialTheme.typography.titleSmall)
     if (state.devices.isEmpty()) Text("No session information loaded.")
     state.devices.forEach { device ->
@@ -232,8 +262,8 @@ internal fun CoreSecuritySection(
             TextButton(onClick = { unblockId = user.id }) { Text("Unblock") }
         }
     }
-    Text("Fine-grained Telegram last-seen/phone privacy and 2-step password " +
-        "controls need a separate audited implementation.",
+    Text("Explicit privacy exceptions are preserved. Advanced 2-step password " +
+        "and full Telegram security controls still require a dedicated audit.",
         style = MaterialTheme.typography.bodySmall)
 }
 
