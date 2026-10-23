@@ -240,6 +240,15 @@ private fun GlaciaApp(
     val coreSecurity by session.coreSecurityState.collectAsState()
     val community by session.communityState.collectAsState()
     var showCreateCommunity by remember { mutableStateOf(false) }
+    var showFolderManagement by remember { mutableStateOf(false) }
+    if (showFolderManagement) {
+        CoreFolderDialog(
+            folders = folders,
+            onDismiss = { showFolderManagement = false },
+            onCreate = session::createTelegramFolder,
+            onDelete = session::deleteTelegramFolder
+        )
+    }
     var showChatInfo by remember { mutableStateOf(false) }
     if (showCreateCommunity) {
         CoreCreateCommunityDialog(
@@ -699,6 +708,7 @@ private fun GlaciaApp(
                             onTogglePin = session::toggleChatPinned,
                             onToggleArchive = { id, archive -> session.setChatArchived(id, archive) },
                             onCreateCommunity = { showCreateCommunity = true },
+                            onManageFolders = { showFolderManagement = true },
                             dark = dark,
                             onOpen = { openChatId = it.id }
                         )
@@ -848,6 +858,7 @@ private fun ChatList(
     onTogglePin: (Long) -> Unit,
     onToggleArchive: (Long, Boolean) -> Unit,
     onCreateCommunity: () -> Unit,
+    onManageFolders: () -> Unit,
     dark: Boolean,
     onOpen: (Chat) -> Unit
 ) {
@@ -871,8 +882,13 @@ private fun ChatList(
                 Spacer(Modifier.height(5.dp))
                 Text("All your chats, with a little more magic.",
                     fontSize = 13.sp, color = mutedInk(dark))
-                TextButton(onClick = onCreateCommunity) {
-                    Text("+ New Telegram group or channel")
+                Row {
+                    TextButton(onClick = onCreateCommunity) {
+                        Text("+ New group/channel")
+                    }
+                    TextButton(onClick = onManageFolders) {
+                        Text("Manage folders")
+                    }
                 }
                 Spacer(Modifier.height(8.dp))
                 Row(
