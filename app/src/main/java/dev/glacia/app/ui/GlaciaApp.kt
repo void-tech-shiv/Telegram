@@ -323,8 +323,11 @@ private fun GlaciaApp(
             title = { Text("Voice / video call") },
             text = {
                 Text(
-                    "GLACIA doesn't have native in-app calling yet. Open this contact's " +
-                        "profile in the official Telegram app, then start a call there?"
+                    "Native voice/video calling is disabled in this build (v" +
+                        BuildConfig.VERSION_NAME + "). To test experimental calls in GLACIA, " +
+                        "set glacia.experimentalNativeCalls=true in local.properties, " +
+                        "rebuild and reinstall the debug APK. " +
+                        "For now, open this contact in official Telegram to call there?"
                 )
             },
             confirmButton = {
