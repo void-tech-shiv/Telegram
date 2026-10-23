@@ -245,6 +245,8 @@ class TdlibMessages(
         is TdApi.MessageVoiceNote -> "voice"
         is TdApi.MessageAudio -> "audio"
         is TdApi.MessageDocument -> "document"
+        is TdApi.MessageSticker -> "sticker"
+        is TdApi.MessageAnimation -> "animation"
         // Telegram call records are service events, not ordinary text messages.
         // Keep their type for message-action eligibility checks.
         is TdApi.MessageCall -> "call"
@@ -255,6 +257,7 @@ class TdlibMessages(
         is TdApi.MessageVideo -> content.video?.video
         is TdApi.MessageVoiceNote -> content.voiceNote?.voice
         is TdApi.MessageAudio -> content.audio?.audio
+        is TdApi.MessageAnimation -> content.animation?.animation
         else -> null
     }
 
@@ -262,6 +265,7 @@ class TdlibMessages(
         is TdApi.MessageVideo -> content.video?.duration ?: 0
         is TdApi.MessageVoiceNote -> content.voiceNote?.duration ?: 0
         is TdApi.MessageAudio -> content.audio?.duration ?: 0
+        is TdApi.MessageAnimation -> content.animation?.duration ?: 0
         else -> 0
     }
 
@@ -276,6 +280,14 @@ class TdlibMessages(
             })?.photo
         }
         is TdApi.MessageVideo -> content.video?.thumbnail?.file
+        is TdApi.MessageAnimation -> content.animation?.thumbnail?.file
+        is TdApi.MessageSticker -> {
+            val sticker = content.sticker
+            // WEBP is a regular still image. TGS/WebM use TDLib's
+            // thumbnail rather than trying to decode vector/video as JPEG.
+            if (sticker?.format is TdApi.StickerFormatWebp) sticker.sticker
+            else sticker?.thumbnail?.file
+        }
         is TdApi.MessageDocument -> content.document?.thumbnail?.file
         else -> null
     }
@@ -284,7 +296,8 @@ class TdlibMessages(
         is TdApi.MessageText -> content.text?.text.orEmpty()
         is TdApi.MessagePhoto -> "📷 Photo" + (content.caption?.text?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: "")
         is TdApi.MessageVideo -> "🎥 Video" + (content.caption?.text?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: "")
-        is TdApi.MessageAnimation -> "🎞 Animation"
+        is TdApi.MessageAnimation -> "🎞 GIF" +
+            (content.caption?.text?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: "")
         is TdApi.MessageVoiceNote -> "🎤 Voice message"
         is TdApi.MessageVideoNote -> "🎬 Video message"
         is TdApi.MessageAudio -> "🎵 Audio"
@@ -292,7 +305,8 @@ class TdlibMessages(
             val name = content.document?.fileName.orEmpty().trim().take(72)
             if (name.isBlank()) "📄 Document" else "📄 $name"
         }
-        is TdApi.MessageSticker -> "🎨 Sticker"
+        is TdApi.MessageSticker -> "🎨 Sticker" +
+            (content.sticker?.emoji?.takeIf { it.isNotBlank() }?.let { " $it" } ?: "")
         is TdApi.MessagePoll -> "📊 Poll"
         is TdApi.MessageLocation -> "📍 Location"
         is TdApi.MessageContact -> "👤 Contact"
