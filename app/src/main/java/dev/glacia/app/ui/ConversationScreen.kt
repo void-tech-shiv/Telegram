@@ -474,7 +474,7 @@ fun ConversationScreen(
                             if (msg.outgoing) Arrangement.End else Arrangement.Start
                     ) {
                         val isVisual = msg.mediaType in setOf(
-                            "photo", "video", "sticker", "animation"
+                            "photo", "video", "sticker", "animated_emoji", "animation"
                         )
                         val imageDocument = msg.mediaType == "document" &&
                             DocumentKind.isImage(msg.attachmentMime, msg.attachmentName)
@@ -533,7 +533,7 @@ fun ConversationScreen(
                                 Spacer(Modifier.height(7.dp))
                             }
                             val thumbnailPath = msg.mediaFileId?.let(filePaths::get)
-                            if (msg.mediaType == "sticker") {
+                            if (msg.mediaType == "sticker" || msg.mediaType == "animated_emoji") {
                                 val originalId = msg.stickerFileId
                                 val downloadedSticker = originalId?.let(filePaths::get)
                                 val transfer = originalId?.let(documentTransfers::get)
@@ -778,7 +778,7 @@ fun ConversationScreen(
                                         .removePrefix(" · ").trim()
                                     "animation" -> msg.text.removePrefix("🎞 GIF")
                                         .removePrefix(" · ").trim()
-                                    "sticker" -> ""
+                                    "sticker", "animated_emoji" -> ""
                                     else -> msg.text
                                 }
                                 if (displayText.isNotEmpty()) {
