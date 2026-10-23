@@ -41,3 +41,23 @@ Preserve your private `local.properties`, TDLib database and Telegram session. D
 7. Retest read receipts, photo/doc Save, video playback and both Liquid Glass themes.
 
 **Merge only after CI is green and real Android device tests are complete.**
+
+## 0.3.6.1 notification hotfix (October 23, 2026)
+
+**Root cause:** TDLib disables its notification-group API unless `notification_group_count_max` is configured to a positive value (the default is 0). The original Phase 3.5 subscribed to `UpdateNotificationGroup` without setting the option. The app therefore showed no OS alerts even with the Android permission granted.
+
+Fixes:
+- After `AuthorizationStateReady`, set TDLib `notification_group_count_max=15`, on every authorized startup. Log only success/error code into the in-app Settings state; never expose private message data.
+- Show `Telegram notification events enabled` or a short setup error in Settings, along with number of received `UpdateNotificationGroup` callbacks.
+- **Send test notification** posts a local Android alert for OS permission/channel diagnosis, even while GLACIA is in the foreground. It does *not* send a Telegram message.
+- **Android notification settings** opens the platform's per-app notification settings so permissions and channels can be inspected.
+- Settings dynamically rechecks actual OS notification availability when returning to GLACIA.
+
+Manual test:
+1. Install the locally configured v0.3.6.1 build over the existing app. Never clear TDLib data to troubleshoot notifications.
+2. In GLACIA → Settings, verify **Telegram notification events enabled** and that Android notification permission is granted.
+3. Tap **Send test notification**. Check Android's notification shade. A test notification there confirms Android channel/permission functionality, not Telegram delivery.
+4. Go to the Android **home screen**, leaving GLACIA running in the background. Send a fresh message from another Telegram account to an unmuted chat. Check the shade; inspect the `TDLib notification updates received` diagnostic on returning.
+5. No Android message notification is posted while GLACIA is foregrounded by design; messages update in the chat UI instead.
+6. Android channels with DEFAULT or LOW importance may not produce a heads-up banner, even if the notification is present in the shade. Check OS app/channel importance and Do Not Disturb settings.
+7. Force-stopping, swiping away on some OEMs, or OS killing the process may prevent notifications; FCM/persistent background delivery has **not** been implemented.
