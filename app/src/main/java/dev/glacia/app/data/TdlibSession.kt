@@ -301,6 +301,7 @@ class TdlibSession(private val context: Context) {
     val messageErrors = messaging.errors
 
     fun loadHistory(chatId: Long, beforeId: Long = 0L) = messaging.loadHistory(chatId, beforeId)
+    fun loadMessageAround(chatId: Long, messageId: Long) = messaging.loadAround(chatId, messageId)
     fun sendText(chatId: Long, text: String, replyTo: Long? = null) =
         messaging.sendText(chatId, text, replyTo)
     fun dismissMessageError(chatId: Long) = messaging.dismissError(chatId)
