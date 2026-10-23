@@ -65,6 +65,19 @@ class TdlibSession(private val context: Context) {
     }
     private val _chats = MutableStateFlow<List<Chat>>(emptyList())
     val chats = _chats.asStateFlow()
+    data class ChatFolderTab(val id: Int, val title: String)
+    private val _folderTabs = MutableStateFlow<List<ChatFolderTab>>(emptyList())
+    val folderTabs = _folderTabs.asStateFlow()
+    private val _folderChats = MutableStateFlow<Map<Int, List<Chat>>>(emptyMap())
+    val folderChats = _folderChats.asStateFlow()
+    fun loadTelegramFolder(id: Int) {
+        if (id !in _folderTabs.value.map { it.id }) return
+        client?.send(TdApi.LoadChats(TdApi.ChatListFolder(id), 100)) { result ->
+            if (result is TdApi.Error && result.code != 404) {
+                _chatActionError.value = "Folder unavailable (Telegram code ${result.code})."
+            }
+        }
+    }
     private val _archivedChats = MutableStateFlow<List<Chat>>(emptyList())
     val archivedChats = _archivedChats.asStateFlow()
     private val _chatActionBusy = MutableStateFlow<Set<Long>>(emptySet())
@@ -551,6 +564,13 @@ class TdlibSession(private val context: Context) {
         notifications.onUpdate(obj)
         when (obj) {
             is TdApi.UpdateAuthorizationState -> onAuth(obj.authorizationState)
+            is TdApi.UpdateChatFolders -> {
+                _folderTabs.value = obj.chatFolders.orEmpty().map { folder ->
+                    ChatFolderTab(folder.id, folder.name?.text?.text.orEmpty()
+                        .ifBlank { "Folder" })
+                }
+                synchronized(known) { emitChats() }
+            }
             is TdApi.UpdateNewChat -> {
                 synchronized(known) {
                     known[obj.chat.id] = obj.chat
@@ -677,6 +697,8 @@ class TdlibSession(private val context: Context) {
                     missingTitleRefreshes.clear()
                     _chats.value = emptyList()
                     _archivedChats.value = emptyList()
+                    _folderTabs.value = emptyList()
+                    _folderChats.value = emptyMap()
                 }
                 synchronized(chatActionLock) { _chatActionBusy.value = emptySet() }
                 _chatActionError.value = null
@@ -761,6 +783,20 @@ class TdlibSession(private val context: Context) {
         }
         _chats.value = buildList(false)
         _archivedChats.value = buildList(true)
+        _folderChats.value = _folderTabs.value.associate { folder ->
+            folder.id to known.values.asSequence()
+                .mapNotNull { chat ->
+                    val pos = chat.positions.firstOrNull {
+                        it.order > 0L &&
+                            (it.list as? TdApi.ChatListFolder)?.chatFolderId == folder.id
+                    }
+                    pos?.let { Triple(chat, it.order, it.isPinned) }
+                }
+                .sortedWith(compareByDescending<Triple<TdApi.Chat, Long, Boolean>> { it.third }
+                    .thenByDescending { it.second })
+                .map { (chat, _, pinned) -> mapChat(chat, false, pinned) }
+                .toList()
+        }
     }
 
     fun submitPhone(phone: String) {
