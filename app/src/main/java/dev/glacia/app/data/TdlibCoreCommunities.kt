@@ -63,12 +63,15 @@ class TdlibCoreCommunities(private val client: () -> Client?) {
                 }
             }
         }
+        // TDLib may answer pinned-message fetch before GetChat: hold its result
+        // until selected info exists rather than silently dropping it.
         active.send(TdApi.GetChatPinnedMessage(chatId)) { response ->
             if (response is TdApi.Message) synchronized(lock) {
                 if (token != epoch) return@synchronized
-                _state.value.selected?.let { existing ->
+                val previous = _state.value.selected
+                if (previous != null) {
                     _state.value = _state.value.copy(
-                        selected = existing.copy(
+                        selected = previous.copy(
                             pinnedMessageId = response.id,
                             pinnedMessageText = when (val content = response.content) {
                                 is TdApi.MessageText -> content.text?.text?.take(200)
@@ -76,6 +79,21 @@ class TdlibCoreCommunities(private val client: () -> Client?) {
                             }
                         )
                     )
+                } else {
+                    // Repeat one server read when initial chat metadata arrives.
+                    active.send(TdApi.GetChatPinnedMessage(chatId)) { retried ->
+                        if (retried is TdApi.Message) synchronized(lock) {
+                            if (token != epoch) return@synchronized
+                            _state.value.selected?.let { chat ->
+                                _state.value = _state.value.copy(
+                                    selected = chat.copy(
+                                        pinnedMessageId = retried.id,
+                                        pinnedMessageText = "Pinned Telegram message"
+                                    )
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
