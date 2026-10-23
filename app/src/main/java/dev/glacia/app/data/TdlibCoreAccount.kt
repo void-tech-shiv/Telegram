@@ -72,10 +72,9 @@ class TdlibCoreAccount(
         val epoch: Long
         synchronized(lock) {
             epoch = ++generation
-            _state.value = _state.value.copy(
-                contactsLoading = true,
-                notice = _state.value.notice?.takeIf { it == "Telegram profile updated." }
-            )
+            _state.value = _state.value.copy(contactsLoading = true)
+            // Preserve any visible profile-save notice until explicitly
+            // dismissed; a refresh must not erase useful error feedback.
         }
         active.send(TdApi.GetMe()) { response ->
             if (response is TdApi.User) {
