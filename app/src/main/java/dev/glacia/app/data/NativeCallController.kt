@@ -39,6 +39,7 @@ class NativeCallController(
     val call = _call.asStateFlow()
     private val _notice = MutableStateFlow<String?>(null)
     val notice = _notice.asStateFlow()
+    fun dismissNotice() { _notice.value = null }
     private val _remoteFrames = MutableSharedFlow<Frame>(extraBufferCapacity = 2)
     val remoteFrames = _remoteFrames.asSharedFlow()
     private val lock = Any()
@@ -200,15 +201,17 @@ class NativeCallController(
     private fun engine(): NativeCallMedia = NativeCallMedia(
         appContext,
         onSignaling = { data ->
-            val id = synchronized(lock) { tdCall?.id } ?: return@NativeCallMedia
-            client()?.send(TdApi.SendCallSignalingData(id, data)) { reply ->
+            val id = synchronized(lock) { tdCall?.id }
+            if (id != null) client()?.send(TdApi.SendCallSignalingData(id, data)) { reply ->
                 if (reply is TdApi.Error) changeError(id, "Telegram signaling error (code ${reply.code}).")
             }
         },
         onConnection = { state ->
-            val id = synchronized(lock) { tdCall?.id } ?: return@NativeCallMedia
-            if (state.uppercase().contains("CONNECTED")) changePhase(id, "Connected")
-            else changePhase(id, state.replace('_', ' ').take(35))
+            val id = synchronized(lock) { tdCall?.id }
+            if (id != null) {
+                if (state.uppercase().contains("CONNECTED")) changePhase(id, "Connected")
+                else changePhase(id, state.replace('_', ' ').take(35))
+            }
         },
         onRemoteFrame = { frame -> _remoteFrames.tryEmit(frame) }
     )
