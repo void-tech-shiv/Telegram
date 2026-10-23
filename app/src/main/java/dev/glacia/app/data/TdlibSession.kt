@@ -194,8 +194,20 @@ class TdlibSession(private val context: Context) {
             .sortedWith(compareByDescending<Pair<TdApi.Chat, Long>> { it.second }
                 .thenByDescending { it.first.id })
             .map { (chat, _) ->
-                val preview = (chat.lastMessage?.content as? TdApi.MessageText)?.text?.text
-                    ?: if (chat.lastMessage == null) "No messages" else "Media or another message"
+                val preview = when (val content = chat.lastMessage?.content) {
+                    is TdApi.MessageText -> content.text?.text.orEmpty()
+                    is TdApi.MessagePhoto -> "📷 Photo"
+                    is TdApi.MessageVideo -> "🎥 Video"
+                    is TdApi.MessageVoiceNote -> "🎤 Voice note"
+                    is TdApi.MessageVideoNote -> "🎬 Video note"
+                    is TdApi.MessageAudio -> "🎵 Audio"
+                    is TdApi.MessageDocument -> "📄 Document"
+                    is TdApi.MessageSticker -> "🎨 Sticker"
+                    is TdApi.MessageAnimation -> "🎞 GIF"
+                    is TdApi.MessagePoll -> "📊 Poll"
+                    null -> "No messages"
+                    else -> "Other message"
+                }
                 fileStore.ensure(chat.photo?.small)
                 Chat(
                     id = chat.id,
