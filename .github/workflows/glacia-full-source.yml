@@ -24,7 +24,7 @@ jobs:
 
       - name: Clone pinned upstream Telegram/Cherrygram code
         run: |
-          git clone --filter=blob:none --depth=1 \
+          git clone --depth=1 \
             https://github.com/arsLan4k1390/Cherrygram.git source
           test "$(git -C source rev-parse HEAD)" = "2cad8055bf9cb633da60d76786ddebdd9e35499d"
           # Submodules remain as tracked gitlinks; only an Android workstation
