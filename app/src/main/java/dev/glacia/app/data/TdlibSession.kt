@@ -190,11 +190,13 @@ class TdlibSession(private val context: Context) {
     val nativeCallNotice = nativeCalls.notice
     fun dismissNativeCallNotice() = nativeCalls.dismissNotice()
     val remoteCallFrames = nativeCalls.remoteFrames
+    val localCallFrames = nativeCalls.localFrames
     fun startNativeCall(chatId: Long, video: Boolean) = nativeCalls.dial(chatId, video)
     fun answerNativeCall() = nativeCalls.accept()
     fun hangupNativeCall() = nativeCalls.hangUp()
     fun muteNativeCall(muted: Boolean) = nativeCalls.setMuted(muted)
     fun speakerNativeCall(on: Boolean) = nativeCalls.setSpeaker(on)
+    fun switchNativeCamera() = nativeCalls.switchCamera()
 
     // TDLib call invitations are observable; no native media engine is present.
     private val callInbox = TdlibCallInbox { client }
