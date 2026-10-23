@@ -172,6 +172,7 @@ class TdlibMessages(
     private fun mediaType(content: TdApi.MessageContent?): String? = when (content) {
         is TdApi.MessagePhoto -> "photo"
         is TdApi.MessageVideo -> "video"
+        is TdApi.MessageDocument -> "document"
         else -> null
     }
 
