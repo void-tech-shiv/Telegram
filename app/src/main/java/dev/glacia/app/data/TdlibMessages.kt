@@ -171,7 +171,7 @@ class TdlibMessages(
                                 attachmentMime = attachment?.mimeType,
                                 playbackFileId = originalPlayback?.id,
                                 playbackDurationSeconds = playbackDuration(update.newContent),
-                                stickerFileId = (update.newContent as? TdApi.MessageSticker)?.sticker?.sticker?.id,
+                                stickerFileId = stickerFor(update.newContent)?.sticker?.id,
                                 stickerFormat = stickerFormat(update.newContent)
                             )
                         } else it
@@ -203,7 +203,7 @@ class TdlibMessages(
         val thumbnail = thumbnailFor(message.content)
         val attachment = (message.content as? TdApi.MessageDocument)?.document
         files.ensure(thumbnail)
-        val sticker = (message.content as? TdApi.MessageSticker)?.sticker
+        val sticker = stickerFor(message.content)
         if (sticker != null) {
             // Keep animated sticker download bounded. Telegram normal sticker
             // file sizes are small; do not auto-download unknown/large payloads.
@@ -249,8 +249,14 @@ class TdlibMessages(
             }
         }.orEmpty()
 
+    private fun stickerFor(content: TdApi.MessageContent?): TdApi.Sticker? = when (content) {
+        is TdApi.MessageSticker -> content.sticker
+        is TdApi.MessageAnimatedEmoji -> content.animatedEmoji?.sticker
+        else -> null
+    }
+
     private fun stickerFormat(content: TdApi.MessageContent?): String? =
-        when ((content as? TdApi.MessageSticker)?.sticker?.format) {
+        when (stickerFor(content)?.format) {
             is TdApi.StickerFormatWebp -> "webp"
             is TdApi.StickerFormatTgs -> "tgs"
             is TdApi.StickerFormatWebm -> "webm"
@@ -302,8 +308,8 @@ class TdlibMessages(
         }
         is TdApi.MessageVideo -> content.video?.thumbnail?.file
         is TdApi.MessageAnimation -> content.animation?.thumbnail?.file
-        is TdApi.MessageSticker -> {
-            val sticker = content.sticker
+        is TdApi.MessageSticker, is TdApi.MessageAnimatedEmoji -> {
+            val sticker = stickerFor(content)
             // WEBP is a regular still image. TGS/WebM use TDLib's
             // thumbnail rather than trying to decode vector/video as JPEG.
             if (sticker?.format is TdApi.StickerFormatWebp) sticker.sticker
@@ -332,7 +338,8 @@ class TdlibMessages(
         is TdApi.MessageLocation -> "📍 Location"
         is TdApi.MessageContact -> "👤 Contact"
         is TdApi.MessageCall -> if (content.isVideo) "📹 Video call" else "📞 Voice call"
-        is TdApi.MessageAnimatedEmoji -> "✨ Animated emoji"
+        is TdApi.MessageAnimatedEmoji -> "✨ Animated emoji " +
+            content.animatedEmoji?.sticker?.emoji.orEmpty()
         is TdApi.MessageVideoNote -> "🎬 Video note"
         is TdApi.MessageDice -> "🎲 Dice"
         // Unknown service records should never be misrepresented as a
