@@ -1,4 +1,4 @@
-# GLACIA Phase 3.9: experimental native 1:1 voice + video (v0.3.13)
+# GLACIA Phase 3.9: experimental native 1:1 voice + video (v0.3.14)
 
 > **Not production-ready, not verified end to end on two real Telegram accounts.**
 > Native calling is **OFF** in normal builds. No claim of reliable two-way audio or video is made without device verification.
@@ -16,12 +16,65 @@
 - One call at a time; stale server updates cannot overwrite another active call; all messages, keys and sensitive native buffers stay out of logs.
 - The parent GLACIA message history, account authorization and package name are unchanged.
 
-## Phase 3.9 call drops immediately after pickup — v0.3.13
+## ICE setup fix in v0.3.14 (native transport)
+
+A phone test showed the specific UI error `Native call setup failed at
+ice_connect`, not a mere transient connection timeout. Reading the pinned
+ntgcalls 3.0.0 source revealed that `P2PCall::connect` calls
+`json::parse(*custom_parameters)` for any **non-null string**. Telegram's
+TDLib can supply a blank `callStateReady.customParameters`; passing `""`
+throws synchronously while starting ICE. This version converts blank/whitespace
+parameters to **null**, retaining valid peer-provided JSON unchanged.
+
+`callStateReady.protocol.libraryVersions` describes the remote client's
+versions. This version explicitly computes its intersection with the native
+library's actual versions before calling `connectP2p`. An incompatible
+protocol fails at `protocol_match` instead of an ambiguous `ice_connect`.
+
+In addition, ntgcalls' incoming RTP audio receiver is attached to the
+**Playback/Microphone** media slot. GLACIA incorrectly populated
+Playback/Speaker, which disabled remote audio reception even if connection
+succeeded. This is now corrected; the audio description still uses
+`is_microphone=false` to direct PCM to the Android speaker device.
+
+Pure Kotlin unit tests cover blank vs present custom JSON and protocol
+intersection. `GLACIA-VoIP` records only numeric server/version counts and
+whether custom JSON was present — never the JSON, endpoints, keys or credentials.
+
+**Developer build instructions (PowerShell):**
+
+```powershell
+cd D:\telegram\Telegram
+git fetch origin
+git switch feature/phase-3-9-native-media-bootstrap
+git pull --ff-only origin feature/phase-3-9-native-media-bootstrap
+.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest
+adb install -r app\build\outputs\apk\debug\app-debug.apk
+adb shell dumpsys package dev.glacia.app | Select-String "versionName"
+```
+
+Use `glacia.experimentalNativeCalls=true` in the existing root
+`local.properties`. Expect `versionName=0.3.14`. Do not uninstall the app
+or expose `local.properties`.
+
+On a test device, try a voice call between **two different test accounts**.
+If native setup still fails, capture ONLY these sanitized diagnostics:
+
+```powershell
+adb logcat -c
+# Reproduce one failing call in GLACIA
+adb logcat -d -s "GLACIA-VoIP:V" "*:S" | Select-Object -Last 80
+```
+
+A passing CI build cannot verify live ICE, two-way sound or video; keep
+PR #17 draft until on-device tests pass.
+
+## Phase 3.9 call drops immediately after pickup — v0.3.14
 
 The original client could end a call as soon as NTgCalls briefly reported
 `DISCONNECTED` during ICE negotiation. In addition, TDLib packets arriving
 before `CallStateReady` were discarded, causing the WebRTC handshake to fail.
-The experimental v0.3.13 branch no longer auto-hangs up on a transient native
+The experimental v0.3.14 branch no longer auto-hangs up on a transient native
 disconnect and buffers up to 32 early signaling packets in memory, flushing
 them only after native initialization. Buffers are dropped on call end; media
 bytes, encryption keys, users, endpoints and signaling payloads are not logged.
@@ -43,7 +96,7 @@ adb install -r app\build\outputs\apk\debug\app-debug.apk
 adb shell dumpsys package dev.glacia.app | Select-String "versionName"
 ```
 
-Expect v0.3.13 and two header call controls in GLACIA. Keep
+Expect v0.3.14 and two header call controls in GLACIA. Keep
 `glacia.experimentalNativeCalls=true` in **root local.properties** so an
 Android Studio Run rebuild does not disable them.
 
