@@ -209,8 +209,14 @@ class NativeCallController(
         onConnection = { state ->
             val id = synchronized(lock) { tdCall?.id }
             if (id != null) {
-                if (state.uppercase().contains("CONNECTED")) changePhase(id, "Connected")
-                else changePhase(id, state.replace('_', ' ').take(35))
+                when (state.uppercase()) {
+                    "CONNECTED" -> changePhase(id, "Connected")
+                    "DISCONNECTED", "FAILED", "CLOSED" -> {
+                        changeError(id, "Native media disconnected.")
+                        discard(id, synchronized(lock) { tdCall?.isVideo } ?: false)
+                    }
+                    else -> changePhase(id, state.replace('_', ' ').take(35))
+                }
             }
         },
         onRemoteFrame = { frame -> _remoteFrames.tryEmit(frame) }
