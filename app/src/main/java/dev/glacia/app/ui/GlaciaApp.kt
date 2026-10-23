@@ -36,6 +36,7 @@ import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Contacts
+import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.material3.*
@@ -285,7 +286,8 @@ private fun GlaciaApp(
         )
     }
     LaunchedEffect(tab) {
-        if (tab == "Contacts" || tab == "Settings") session.refreshCoreAccount()
+        if (tab == "Contacts" || tab == "Settings" || tab == "Profile")
+            session.refreshCoreAccount()
     }
     LaunchedEffect(notificationChatId, notificationTarget?.id, liveChats) {
         val id = notificationChatId ?: return@LaunchedEffect
@@ -520,10 +522,20 @@ private fun GlaciaApp(
     // Capture only the smooth aurora layer for Haze, never the scrollable content.
     // This prevents recursive backdrop capture and rectangle-shaped blur artifacts.
     Box(Modifier.fillMaxSize()) {
-        AuroraBackground(dark, Modifier.fillMaxSize().hazeSource(hazeState))
+        if (current != null) {
+            AuroraBackground(dark, Modifier.fillMaxSize().hazeSource(hazeState))
+        } else {
+            Box(
+                Modifier.fillMaxSize().background(
+                    if (dark) Color(0xFF171717) else Color(0xFFF8F9FB)
+                )
+            )
+        }
 
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()) {
-            GlassPanel(
+            // Full-width hero card belonged to the old dashboard, not a chat list.
+            // Show existing call-safe glass header only inside conversations.
+            if (current != null) GlassPanel(
                 hazeState = hazeState,
                 dark = dark,
                 modifier = Modifier.fillMaxWidth()
@@ -675,7 +687,7 @@ private fun GlaciaApp(
                     )
                 } else {
                     when (tab) {
-                        "Chats" -> ChatList(
+                        "Chats" -> CompactChatList(
                             chats = when {
                                 viewingArchive -> archivedChats
                                 viewingFolderId != null -> chatsByFolder[viewingFolderId].orEmpty()
@@ -711,6 +723,7 @@ private fun GlaciaApp(
                             onToggleArchive = { id, archive -> session.setChatArchived(id, archive) },
                             onCreateCommunity = { showCreateCommunity = true },
                             onManageFolders = { showFolderManagement = true },
+                            mutedChatIds = chatMuteStates.filterValues { it }.keys,
                             dark = dark,
                             onOpen = { openChatId = it.id }
                         )
@@ -741,6 +754,24 @@ private fun GlaciaApp(
                                 }
                             }
                         )
+                        "Profile" -> Column(
+                            Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                                .padding(horizontal = 18.dp, vertical = 20.dp)
+                        ) {
+                            Text("Profile", color = ink(dark), fontSize = 28.sp,
+                                fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(16.dp))
+                            CoreProfileSection(
+                                state = coreAccount,
+                                filePaths = photoPaths,
+                                dark = dark,
+                                onRefresh = session::refreshCoreAccount,
+                                onSave = session::updateOwnProfile,
+                                onSaveUsername = session::updateOwnUsername,
+                                onSavePhoto = session::updateOwnPhoto,
+                                onDismissNotice = session::clearAccountNotice
+                            )
+                        }
                         "Discover" -> TelegramDiscoverScreen(
                             dark = dark,
                             photoPaths = photoPaths,
@@ -776,31 +807,26 @@ private fun GlaciaApp(
             }
 
             if (current == null) {
-                GlassPanel(
-                    hazeState = hazeState,
-                    dark = dark,
-                    modifier = Modifier.fillMaxWidth()
-                        .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 12.dp),
-                    radius = 30.dp
+                Row(
+                    Modifier.fillMaxWidth()
+                        .padding(start = 10.dp, end = 10.dp, top = 5.dp, bottom = 5.dp)
+                        .height(68.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(if (dark) Color(0xFF242426) else Color(0xFFE5E8ED))
+                        .padding(horizontal = 5.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        NavigationTab("Chats", tab == "Chats", dark, Icons.Rounded.ChatBubbleOutline) {
-                            tab = "Chats"
-                        }
-                        NavigationTab("Contacts", tab == "Contacts", dark, Icons.Rounded.Contacts) {
-                            tab = "Contacts"
-                        }
-                        NavigationTab("Discover", tab == "Discover", dark, Icons.Rounded.Explore) {
-                            tab = "Discover"
-                        }
-                        NavigationTab("Settings", tab == "Settings", dark, Icons.Rounded.Settings) {
-                            tab = "Settings"
-                        }
-                    }
+                    NavigationTab("Chats", tab == "Chats", dark,
+                        Icons.Rounded.ChatBubbleOutline, Modifier.weight(1f)) { tab = "Chats" }
+                    NavigationTab("Contacts", tab == "Contacts", dark,
+                        Icons.Rounded.Contacts, Modifier.weight(1f)) { tab = "Contacts" }
+                    NavigationTab("GLACIA", tab == "Discover", dark,
+                        Icons.Rounded.Explore, Modifier.weight(1f)) { tab = "Discover" }
+                    NavigationTab("Settings", tab == "Settings", dark,
+                        Icons.Rounded.Settings, Modifier.weight(1f)) { tab = "Settings" }
+                    NavigationTab("Profile", tab == "Profile", dark,
+                        Icons.Rounded.AccountCircle, Modifier.weight(1f)) { tab = "Profile" }
                 }
             }
         }
@@ -1106,6 +1132,7 @@ private fun NavigationTab(
     selected: Boolean,
     dark: Boolean,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     val highlightBackground by animateColorAsState(
@@ -1113,17 +1140,25 @@ private fun NavigationTab(
         label = "GLACIA tab highlight"
     )
     Column(
-        modifier = Modifier
-            .clip(RoundedCornerShape(22.dp))
-            .background(highlightBackground)
+        modifier = modifier
+            .fillMaxHeight()
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (selected) {
+                if (dark) Color(0xFF3B3226) else Color(0xFFFFE9C8)
+            } else highlightBackground)
             .clickable(onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 9.dp),
+            .padding(horizontal = 2.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Icon(icon, contentDescription = label,
-            tint = if (selected) accent(dark) else mutedInk(dark))
-        Spacer(Modifier.height(5.dp))
-        Text(label, fontSize = 11.sp, color = if (selected) ink(dark) else mutedInk(dark),
+        Icon(icon, contentDescription = label, modifier = Modifier.size(22.dp),
+            tint = if (selected) Color(0xFFE8BD7D)
+                else if (dark) Color(0xFFAAAAB0) else Color(0xFF686A71))
+        Spacer(Modifier.height(3.dp))
+        Text(label, maxLines = 1, fontSize = 10.sp,
+            color = if (selected) {
+                if (dark) Color(0xFFE8BD7D) else Color(0xFF8B622C)
+            } else if (dark) Color(0xFFBABABF) else Color(0xFF63656E),
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
     }
 }
