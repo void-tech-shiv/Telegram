@@ -105,12 +105,15 @@ class TdlibCoreCommunities(private val client: () -> Client?) {
         onChat: ((Long) -> Unit)? = null
     ) {
         val active = client() ?: return
+        val token: Long
         synchronized(lock) {
             if (_state.value.actionBusy) return
+            token = epoch
             _state.value = _state.value.copy(actionBusy = true, notice = null)
         }
         active.send(request) { reply ->
             synchronized(lock) {
+                if (token != epoch) return@send
                 _state.value = _state.value.copy(
                     actionBusy = false,
                     notice = if (reply is TdApi.Error)
@@ -126,8 +129,10 @@ class TdlibCoreCommunities(private val client: () -> Client?) {
     fun addMember(chatId: Long, userId: Long) {
         if (userId <= 0L) return
         val active = client() ?: return
+        val token = synchronized(lock) { epoch }
         active.send(TdApi.AddChatMember(chatId, userId, 0)) { response ->
             synchronized(lock) {
+                if (token != epoch) return@synchronized
                 _state.value = _state.value.copy(
                     notice = when (response) {
                         is TdApi.Error ->
@@ -176,14 +181,17 @@ class TdlibCoreCommunities(private val client: () -> Client?) {
 
     fun createInvite(chatId: Long) {
         val active = client() ?: return
+        val token: Long
         synchronized(lock) {
             if (_state.value.actionBusy) return
+            token = epoch
             _state.value = _state.value.copy(actionBusy = true, invitation = null, notice = null)
         }
         // A non-expiring invite is security-sensitive: user explicitly taps
         // Create; show link only to them, never log or auto-share it.
         active.send(TdApi.CreateChatInviteLink(chatId, "", 0, 0, false)) { result ->
             synchronized(lock) {
+                if (token != epoch) return@synchronized
                 _state.value = _state.value.copy(
                     actionBusy = false,
                     invitation = (result as? TdApi.ChatInviteLink)?.inviteLink,
