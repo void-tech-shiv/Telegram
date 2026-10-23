@@ -61,3 +61,26 @@ Manual test:
 5. No Android message notification is posted while GLACIA is foregrounded by design; messages update in the chat UI instead.
 6. Android channels with DEFAULT or LOW importance may not produce a heads-up banner, even if the notification is present in the shade. Check OS app/channel importance and Do Not Disturb settings.
 7. Force-stopping, swiping away on some OEMs, or OS killing the process may prevent notifications; FCM/persistent background delivery has **not** been implemented.
+
+## 0.3.6.2 real-message notification diagnostics
+
+A local "Send test notification" uses Android's notification service directly and **does not prove** that real incoming Telegram notification groups are reaching the process.
+
+This update adds privacy-safe Settings counters:
+- `Incoming message events`: number of incoming `UpdateNewMessage` updates received since GLACIA's current process started.
+- `TDLib group updates` and `New TDLib notification items`: incoming Telegram notification API events, including groups filtered or delayed by TDLib.
+- `Android alerts posted`: notification events that GLACIA actually passed to Android for display.
+- `App state` and `Last event`: whether GLACIA was foregrounded (and therefore intentionally suppressed the alert), Android permissions/channels rejected the event, or the event was handled normally.
+- The default and silent notification channels are distinguished. A successful test on the default channel doesn't imply that the separate silent channel is enabled.
+
+Reproduction:
+1. Install over GLACIA without clearing its data. Settings must show `Telegram notification events enabled` first.
+2. Keep GLACIA signed in, **press Android Home**, and leave it running in the background (do not swipe/force-stop).
+3. From **another Telegram account**, send an ordinary new message in an unmuted chat. Do not instantly read it in another Telegram client.
+4. Check the Android notification shade, not just heads-up banners. Return to GLACIA Settings and compare the four counters and `Last event`. These counters don't store chat contents, names, or account identifiers.
+5. If `Incoming message events` did not increase, TDLib wasn't receiving updates in the process (often OS background suspension/termination). No app-local alert implementation can post a real-message notification without a delivered event; proper FCM push integration is still required.
+6. If incoming count increased but TDLib notification items did not, review TDLib notification setup and Telegram's mute/settings/cross-device notification behavior.
+7. If items increased but Android alerts posted remained 0, inspect `App state`, blocked channel and other `Last event` reasons.
+8. If posted increased but the shade is empty, inspect the Android notification channels (including Silent Telegram messages), app notification blocking and Do Not Disturb.
+
+Do not use direct `UpdateNewMessage` fallbacks blindly: they could bypass Telegram's muted-chat rules or notify about messages already read elsewhere.
