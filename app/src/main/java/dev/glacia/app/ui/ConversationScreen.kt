@@ -101,6 +101,7 @@ fun ConversationScreen(
     lastReadOutboxId: Long,
     active: Boolean,
     onVisibleMessages: (List<Long>) -> Unit,
+    onTyping: (Boolean) -> Unit,
     onSend: (String) -> Unit,
     onLoadMore: () -> Unit,
     onDismissError: () -> Unit
@@ -114,6 +115,23 @@ fun ConversationScreen(
     var playingMedia by remember { mutableStateOf<Triple<String, Boolean, Int>?>(null) }
     var newestSeen by remember(chat.id) { mutableLongStateOf(Long.MIN_VALUE) }
     var draft by rememberSaveable(chat.id) { mutableStateOf("") }
+
+    // Report typing at most once every four seconds. Cancel on Send, leaving
+    // the chat, or moving the app to background. No drafts are logged or stored.
+    LaunchedEffect(chat.id, active, draft.isNotBlank()) {
+        if (!active || draft.isBlank()) return@LaunchedEffect
+        var started = false
+        try {
+            delay(450)
+            while (true) {
+                onTyping(true)
+                started = true
+                delay(4_000)
+            }
+        } finally {
+            if (started) onTyping(false)
+        }
+    }
 
     // Only report genuinely visible, incoming messages; never mark the entire
     // loaded history as read when opening a conversation.
