@@ -6,6 +6,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import android.Manifest
 import android.os.Build
 import android.content.pm.PackageManager
+import android.content.Intent
+import android.provider.Settings
 import kotlinx.coroutines.delay
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.horizontalScroll
@@ -123,6 +125,13 @@ fun GlaciaRoot() {
                 photoPaths = photoPaths,
                 notificationPermission = notificationsAllowed,
                 onTestNotification = { session.sendTestNotification() },
+                onOpenNotificationSettings = {
+                    val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                        putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                },
                 onNotificationPermission = {
                     if (Build.VERSION.SDK_INT >= 33 && !notificationsAllowed) {
                         permissionRequest.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -173,6 +182,7 @@ private fun GlaciaApp(
     photoPaths: Map<Int, String>,
     notificationPermission: Boolean,
     onTestNotification: () -> Boolean,
+    onOpenNotificationSettings: () -> Unit,
     onNotificationPermission: () -> Unit,
     onThemeChange: (ThemeChoice) -> Unit
 ) {
@@ -329,7 +339,8 @@ private fun GlaciaApp(
                         else -> SettingsScreen(
                             selectedTheme, dark, onThemeChange,
                             notificationPermission, onNotificationPermission,
-                            onTestNotification, notificationSetup, notificationEvents
+                            onTestNotification, onOpenNotificationSettings,
+                            notificationSetup, notificationEvents
                         )
                     }
                 }
@@ -621,6 +632,7 @@ private fun SettingsScreen(
     notificationPermission: Boolean,
     onNotificationPermission: () -> Unit,
     onTestNotification: () -> Boolean,
+    onOpenNotificationSettings: () -> Unit,
     notificationSetup: String,
     notificationEvents: Int
 ) {
@@ -666,6 +678,9 @@ private fun SettingsScreen(
             TextButton(onClick = onNotificationPermission) {
                 Text("Allow notifications", color = accent(dark))
             }
+        }
+        TextButton(onClick = onOpenNotificationSettings) {
+            Text("Android notification settings", color = accent(dark))
         }
         if (notificationPermission) {
             TextButton(onClick = {
