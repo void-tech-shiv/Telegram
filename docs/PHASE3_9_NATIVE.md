@@ -1,4 +1,4 @@
-# GLACIA Phase 3.9: experimental native 1:1 voice + video (v0.3.12)
+# GLACIA Phase 3.9: experimental native 1:1 voice + video (v0.3.13)
 
 > **Not production-ready, not verified end to end on two real Telegram accounts.**
 > Native calling is **OFF** in normal builds. No claim of reliable two-way audio or video is made without device verification.
@@ -15,6 +15,52 @@
 - Mic/camera runtime permission requests, mute/unmute, basic speaker route toggle, hangup/decline.
 - One call at a time; stale server updates cannot overwrite another active call; all messages, keys and sensitive native buffers stay out of logs.
 - The parent GLACIA message history, account authorization and package name are unchanged.
+
+## Phase 3.9 call drops immediately after pickup — v0.3.13
+
+The original client could end a call as soon as NTgCalls briefly reported
+`DISCONNECTED` during ICE negotiation. In addition, TDLib packets arriving
+before `CallStateReady` were discarded, causing the WebRTC handshake to fail.
+The experimental v0.3.13 branch no longer auto-hangs up on a transient native
+disconnect and buffers up to 32 early signaling packets in memory, flushing
+them only after native initialization. Buffers are dropped on call end; media
+bytes, encryption keys, users, endpoints and signaling payloads are not logged.
+
+Native setup now reports safe, predefined stages such as `create_p2p`,
+`audio_capture`, `audio_playback`, `key_exchange`, `audio_routing` or
+`ice_connect`. Telegram `callStateError` displays its numeric TDLib code.
+This makes a failed call diagnosable without exposing private account data.
+
+**OnePlus / Android Studio debug procedure:**
+
+```powershell
+cd D:\telegram\Telegram
+git fetch origin
+git switch feature/phase-3-9-native-media-bootstrap
+git pull --ff-only origin feature/phase-3-9-native-media-bootstrap
+.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest
+adb install -r app\build\outputs\apk\debug\app-debug.apk
+adb shell dumpsys package dev.glacia.app | Select-String "versionName"
+```
+
+Expect v0.3.13 and two header call controls in GLACIA. Keep
+`glacia.experimentalNativeCalls=true` in **root local.properties** so an
+Android Studio Run rebuild does not disable them.
+
+Make ONE test voice call between distinct test accounts; if still dropping,
+capture **only GLACIA's sanitized stage/state diagnostics** (not full device or
+TDLib logs):
+
+```powershell
+adb logcat -d -s "GLACIA-VoIP:V" "*:S" | Select-Object -Last 70
+```
+
+Share that filtered text and the exact UI error, not raw Telegram API
+credentials, user/session files, or an unfiltered Logcat. Native C++ crashes
+may require separate local tombstone investigation; sanitize before sharing.
+
+A passing CI build does not certify two-way voice/video, background calling,
+Bluetooth routing or call recovery. Keep PR #17 draft pending real-device QA.
 
 ## Security / reliability warnings
 
@@ -47,7 +93,7 @@ APK always keeps native calling OFF regardless of this local setting. If the
 property is absent or false, the external handoff stays available.
 
 Verify installed version using `adb shell dumpsys package dev.glacia.app` and
-confirm that `versionName=0.3.12` appears after Run. For additional debugging
+confirm that `versionName=0.3.13` appears after Run. For additional debugging
 inspect the generated `app/build/generated/source/buildConfig/debug/dev/glacia/app/BuildConfig.java`
 for `EXPERIMENTAL_NATIVE_CALLS = true`; if your AGP uses a different generated
 location, use Android Studio's Find in Files.
