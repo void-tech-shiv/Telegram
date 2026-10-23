@@ -95,6 +95,22 @@ class TdlibMessages(
         }
     }
 
+    /**
+     * Jump to a server search result not currently in the timeline.
+     * Fetches a small window only, and uses the same reducer as normal history.
+     * The UI performs the actual scroll once that message appears.
+     */
+    fun loadAround(chatId: Long, messageId: Long) {
+        if (chatId == 0L || messageId <= 0L) return
+        val active = client() ?: return
+        active.send(TdApi.GetChatHistory(chatId, messageId, -15, 40, false)) { response ->
+            when (response) {
+                is TdApi.Messages -> merge(chatId, response.messages?.map(::fromTd).orEmpty())
+                is TdApi.Error -> error(chatId, "Cannot jump to message (Telegram code ${response.code}).")
+            }
+        }
+    }
+
     fun sendText(chatId: Long, body: String, replyToId: Long? = null) {
         val text = body.trim()
         if (text.isBlank() || text.length > 4096) {

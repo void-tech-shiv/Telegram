@@ -2,7 +2,21 @@
 
 Independent Android Telegram client developed in **Kotlin + Jetpack Compose + TDLib**. Midnight Glass and Frosted Daylight themes, TDLib Telegram session, real chats/messaging, images/documents, Media3 video/voice playback, Discover search, unread filters, read receipts and typing indicators.
 
-## Experimental developer build: v0.3.17 (Phase 3.12 — network awareness)
+## Experimental developer build: v0.3.18 (Phase 3.13 — Telegram feature expansion)
+
+**Branch:** `feature/phase-3-13-chat-management-search` · **Status:** draft, two-account device QA required.
+
+- Added Telegram-synced **Main/Archived** chat views, archive/unarchive
+  and pin/unpin actions with per-chat feedback and safe errors.
+- Added **Search in chat** backed by TDLib, paginated remote history,
+  stale-response protection and tap-to-jump to matching message context.
+- Preserved existing two-way voice/video, Liquid Glass full-screen calls,
+  background audio and notification Hang up. No new native media changes.
+- Telegram has many more features; this is a first parity batch, **not**
+  complete Telegram parity. See `docs/PHASE3_13.md` for feature roadmap,
+  exact Windows commands and the manual device test matrix.
+
+## Previous experimental developer build: v0.3.17 (Phase 3.12 — network awareness)
 
 **Branch:** `feature/phase-3-12-network-awareness` · **Status:** draft / device QA required.
 
@@ -97,7 +111,7 @@ Independent Android Telegram client developed in **Kotlin + Jetpack Compose + TD
 ```powershell
 cd D:\telegram\Telegram
 git fetch origin
-git switch --track origin/feature/phase-3-12-network-awareness
+git switch --track origin/feature/phase-3-13-chat-management-search
 .\gradlew.bat :app:assembleDebug :app:testDebugUnitTest "-Pglacia.experimentalNativeCalls=true"
 ```
 

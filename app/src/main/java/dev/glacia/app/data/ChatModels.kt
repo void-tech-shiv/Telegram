@@ -10,7 +10,8 @@ data class Chat(
     val isOnline: Boolean = false,
     val isGroup: Boolean = false,
     val pinned: Boolean = false,
-    val photoFileId: Int? = null
+    val photoFileId: Int? = null,
+    val archived: Boolean = false
 )
 
 data class MessageReactionSummary(val emoji: String, val count: Int, val chosen: Boolean)
