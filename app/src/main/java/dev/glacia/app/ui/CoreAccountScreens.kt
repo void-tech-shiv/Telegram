@@ -1,5 +1,8 @@
 package dev.glacia.app.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -66,9 +69,40 @@ internal fun CoreContactsScreen(
     onRefresh: () -> Unit,
     onOpenContact: (Long) -> Unit,
     onOpenSavedMessages: () -> Unit,
+    onAddContact: (String) -> Unit,
+    onRemoveContact: (Long) -> Unit,
     onDismissNotice: () -> Unit
 ) {
     var query by remember { mutableStateOf("") }
+    var adding by remember { mutableStateOf(false) }
+    var username by remember { mutableStateOf("") }
+    var removing by remember { mutableStateOf<CorePerson?>(null) }
+    if (adding) AlertDialog(
+        onDismissRequest = { adding = false },
+        title = { Text("Add Telegram contact") },
+        text = {
+            Column {
+                Text("Search by exact public @username. Your phone number will not be shared.")
+                OutlinedTextField(username, { username = it.take(33) },
+                    label = { Text("@username") }, singleLine = true)
+            }
+        },
+        confirmButton = { TextButton(onClick = {
+            onAddContact(username); adding = false
+        }, enabled = username.trim().isNotBlank()) { Text("Add") } },
+        dismissButton = { TextButton(onClick = { adding = false }) { Text("Cancel") } }
+    )
+    removing?.let { person ->
+        AlertDialog(
+            onDismissRequest = { removing = null },
+            title = { Text("Remove Telegram contact?") },
+            text = { Text("Remove ${person.displayName} from your Telegram cloud contacts? Chat history stays.") },
+            confirmButton = { TextButton(onClick = {
+                onRemoveContact(person.id); removing = null
+            }) { Text("Remove") } },
+            dismissButton = { TextButton(onClick = { removing = null }) { Text("Cancel") } }
+        )
+    }
     val visible = remember(state.contacts, query) {
         state.contacts.filter {
             query.isBlank() || it.displayName.contains(query, true) ||
@@ -84,6 +118,7 @@ internal fun CoreContactsScreen(
                 Text("Your Telegram cloud contacts · ${state.contacts.size}",
                     fontSize = 12.sp, color = coreMuted(dark))
             }
+            TextButton(onClick = { adding = true }) { Text("+ Add") }
             IconButton(onClick = onRefresh, enabled = !state.contactsLoading) {
                 Icon(Icons.Rounded.Refresh, "Refresh Telegram contacts", tint = coreAccent(dark))
             }
@@ -161,8 +196,16 @@ internal fun CoreContactsScreen(
                             color = coreMuted(dark), fontSize = 12.sp
                         )
                     }
-                    Icon(Icons.Rounded.ArrowForward, "Open private chat",
-                        tint = coreAccent(dark))
+                    Column {
+                        IconButton(onClick = { onOpenContact(person.id) }) {
+                            Icon(Icons.Rounded.ArrowForward, "Open private chat",
+                                tint = coreAccent(dark))
+                        }
+                        TextButton(onClick = { removing = person }) {
+                            Text("Remove", style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.error)
+                        }
+                    }
                 }
             }
         }
@@ -177,6 +220,8 @@ internal fun CoreProfileSection(
     dark: Boolean,
     onRefresh: () -> Unit,
     onSave: (String, String, String) -> Unit,
+    onSaveUsername: (String) -> Unit,
+    onSavePhoto: (String) -> Unit,
     onDismissNotice: () -> Unit
 ) {
     val person = state.self
@@ -184,6 +229,43 @@ internal fun CoreProfileSection(
     var first by remember { mutableStateOf("") }
     var last by remember { mutableStateOf("") }
     var bio by remember { mutableStateOf("") }
+    var editingUsername by remember { mutableStateOf(false) }
+    var publicUsername by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        runCatching {
+            val type = context.contentResolver.getType(uri)
+            require(type == "image/jpeg" || type == "image/png")
+            val destination = java.io.File.createTempFile("glacia-avatar-", ".jpg", context.cacheDir)
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                destination.outputStream().use { output ->
+                    val buffer = ByteArray(8192)
+                    var total = 0
+                    while (true) {
+                        val n = input.read(buffer)
+                        if (n < 0) break
+                        total += n
+                        require(total <= 5_000_000) { "Picture exceeds 5MB" }
+                        output.write(buffer, 0, n)
+                    }
+                }
+            } ?: error("Could not open photo")
+            onSavePhoto(destination.absolutePath)
+        }
+    }
+    if (editingUsername) AlertDialog(
+        onDismissRequest = { editingUsername = false },
+        title = { Text("Telegram public username") },
+        text = {
+            OutlinedTextField(publicUsername, { publicUsername = it.take(33) },
+                label = { Text("Username (without @)") }, singleLine = true)
+        },
+        confirmButton = { TextButton(onClick = {
+            onSaveUsername(publicUsername); editingUsername = false
+        }) { Text("Save") } },
+        dismissButton = { TextButton(onClick = { editingUsername = false }) { Text("Cancel") } }
+    )
     if (editing) {
         AlertDialog(
             onDismissRequest = { if (!state.busy) editing = false },
@@ -203,8 +285,7 @@ internal fun CoreProfileSection(
                         modifier = Modifier.fillMaxWidth(), maxLines = 3
                     )
                     Text(
-                        "Changes sync to your Telegram account. Username and photo edits " +
-                            "are not part of this release.",
+                        "Changes sync to your Telegram account.",
                         color = coreMuted(dark), fontSize = 12.sp
                     )
                 }
@@ -261,6 +342,14 @@ internal fun CoreProfileSection(
                 Icon(Icons.Rounded.Edit, null, Modifier.size(17.dp))
                 Spacer(Modifier.width(7.dp))
                 Text("Edit name and bio")
+            }
+            Row {
+                TextButton(onClick = {
+                    publicUsername = person.username
+                    editingUsername = true
+                }, enabled = !state.busy) { Text("Change username") }
+                TextButton(onClick = { pickPhoto.launch("image/*") },
+                    enabled = !state.busy) { Text("Update photo") }
             }
         }
         if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
