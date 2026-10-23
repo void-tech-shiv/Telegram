@@ -2,7 +2,7 @@ name: GLACIA Android CI
 
 on:
   push:
-    branches: [main, feature/phase-2-tdlib-auth]
+    branches: [main, feature/phase-2-tdlib-auth, feature/phase-3-messaging]
   pull_request:
     branches: [main]
   workflow_dispatch:
