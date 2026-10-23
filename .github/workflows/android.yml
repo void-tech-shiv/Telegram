@@ -2,9 +2,9 @@ name: GLACIA Android CI
 
 on:
   push:
-    branches: [main, feature/phase-2-tdlib-auth, feature/phase-3-messaging, feature/phase-3-1-media, feature/phase-3-2-playback, feature/phase-3-3-cherry-inspired, feature/phase-3-4-read-receipts, feature/phase-3-5-typing-notifications, feature/phase-3-6-smart-notifications, feature/phase-3-7-media-compose, feature/phase-3-8-message-actions-calls, feature/phase-3-9-incoming-call-foundation]
+    branches: [main, feature/phase-2-tdlib-auth, feature/phase-3-messaging, feature/phase-3-1-media, feature/phase-3-2-playback, feature/phase-3-3-cherry-inspired, feature/phase-3-4-read-receipts, feature/phase-3-5-typing-notifications, feature/phase-3-6-smart-notifications, feature/phase-3-7-media-compose, feature/phase-3-8-message-actions-calls, feature/phase-3-9-incoming-call-foundation, feature/phase-3-9-native-media-bootstrap]
   pull_request:
-    branches: [main, feature/phase-2-tdlib-auth, feature/phase-3-messaging, feature/phase-3-1-media, feature/phase-3-2-playback, feature/phase-3-3-cherry-inspired, feature/phase-3-4-read-receipts, feature/phase-3-5-typing-notifications, feature/phase-3-6-smart-notifications, feature/phase-3-7-media-compose, feature/phase-3-8-message-actions-calls, feature/phase-3-9-incoming-call-foundation]
+    branches: [main, feature/phase-2-tdlib-auth, feature/phase-3-messaging, feature/phase-3-1-media, feature/phase-3-2-playback, feature/phase-3-3-cherry-inspired, feature/phase-3-4-read-receipts, feature/phase-3-5-typing-notifications, feature/phase-3-6-smart-notifications, feature/phase-3-7-media-compose, feature/phase-3-8-message-actions-calls, feature/phase-3-9-incoming-call-foundation, feature/phase-3-9-native-media-bootstrap]
   workflow_dispatch:
 
 permissions:
@@ -28,9 +28,22 @@ jobs:
         run: sdkmanager --channel=3 "platforms;android-37.0" "build-tools;36.0.0"
       - name: Compile demo and run JVM tests
         run: gradle --no-daemon :app:assembleDebug :app:testDebugUnitTest
+      - name: Verify experimental debug-call opt-in compiles
+        run: gradle --no-daemon :app:compileDebugKotlin "-Pglacia.experimentalNativeCalls=true"
+      - name: Diagnose native Java binding on compile failure
+        if: failure()
+        shell: bash
+        run: |
+          AAR=$(find "$HOME/.gradle/caches/modules-2/files-2.1/io.github.pytgcalls/ntgcalls/3.0.0" -name '*.aar' | head -n 1)
+          test -f "$AAR"
+          unzip -p "$AAR" classes.jar > /tmp/ntgcalls-classes.jar
+          jar tf /tmp/ntgcalls-classes.jar | grep -E 'io/github/pytgcalls/.*(Frame|Protocol|Callback|RTCServer|AudioDescription|VideoDescription)' | head -80
+          for c in io.github.pytgcalls.NTgCalls io.github.pytgcalls.p2p.Protocol io.github.pytgcalls.media.AudioDescription io.github.pytgcalls.media.VideoDescription io.github.pytgcalls.p2p.RTCServer io.github.pytgcalls.models.Frame io.github.pytgcalls.models.FrameData io.github.pytgcalls.ConnectionInfo; do
+            javap -classpath /tmp/ntgcalls-classes.jar "$c" || true
+          done
       - name: Upload unsigned debug APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: GLACIA-phase3-9-unconfigured-debug-apk
+          name: GLACIA-native-media-experimental-unconfigured-apk
           path: app/build/outputs/apk/debug/app-debug.apk

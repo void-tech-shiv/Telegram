@@ -16,6 +16,15 @@ val privateProps = Properties().apply {
 val telegramApiId = privateProps.getProperty("telegram.apiId")?.trim()?.toIntOrNull() ?: 0
 val telegramApiHash = privateProps.getProperty("telegram.apiHash")?.trim().orEmpty()
 
+// Android Studio's Run button does not inherit an earlier command-line -P flag.
+// Allow an explicit, private local.properties opt-in to persist across IDE builds.
+// Never enable experimental JNI voice/video calling in release APKs.
+val experimentalNativeCalls = (
+    providers.gradleProperty("glacia.experimentalNativeCalls").orNull
+        ?: privateProps.getProperty("glacia.experimentalNativeCalls")
+    )?.trim()?.equals("true", ignoreCase = true) == true
+
+
 android {
     namespace = "dev.glacia.app"
     compileSdk = 37
@@ -24,8 +33,8 @@ android {
         applicationId = "dev.glacia.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 16
-        versionName = "0.3.10"
+        versionCode = 20
+        versionName = "0.3.14"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("boolean", "FCM_CONFIGURED", "${file("google-services.json").isFile}")
         buildConfigField("int", "TELEGRAM_API_ID", "$telegramApiId")
@@ -33,8 +42,16 @@ android {
     }
 
     buildTypes {
+        debug {
+            buildConfigField(
+                "boolean", "EXPERIMENTAL_NATIVE_CALLS", experimentalNativeCalls.toString()
+            )
+        }
         release {
             isMinifyEnabled = false
+            // Release builds never expose unverified native calling, even if the
+            // local debug property is set to true.
+            buildConfigField("boolean", "EXPERIMENTAL_NATIVE_CALLS", "false")
         }
     }
 
@@ -67,6 +84,8 @@ dependencies {
     implementation("dev.chrisbanes.haze:haze:2.0.1")
     implementation("dev.chrisbanes.haze:haze-glass:2.0.1")
     implementation("io.github.tdlib-android:core:0.1.1")
+    // Native libwebrtc/ntgcalls (LGPL-3.0). Calls disabled by default until device QA.
+    implementation("io.github.pytgcalls:ntgcalls:3.0.0")
     implementation("io.coil-kt.coil3:coil-compose:3.6.3")
     implementation(platform("com.google.firebase:firebase-bom:35.0.2"))
     implementation("com.google.firebase:firebase-messaging")
