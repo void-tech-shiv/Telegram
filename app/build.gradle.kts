@@ -24,8 +24,8 @@ android {
         applicationId = "dev.glacia.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 15
-        versionName = "0.3.9"
+        versionCode = 16
+        versionName = "0.3.10"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("boolean", "FCM_CONFIGURED", "${file("google-services.json").isFile}")
         buildConfigField("int", "TELEGRAM_API_ID", "$telegramApiId")
