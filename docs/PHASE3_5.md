@@ -84,3 +84,25 @@ Reproduction:
 8. If posted increased but the shade is empty, inspect the Android notification channels (including Silent Telegram messages), app notification blocking and Do Not Disturb.
 
 Do not use direct `UpdateNewMessage` fallbacks blindly: they could bypass Telegram's muted-chat rules or notify about messages already read elsewhere.
+
+## 0.3.6.3 — Foreground alerts and Android heads-up banners
+
+Root cause observed in Android diagnostics: **Incoming message events: 19**, **New TDLib notification items: 10**, **Android alerts posted: 0**, **Last event: App foregrounded: Android alert intentionally skipped**.
+
+- TDLib was already receiving messages and notification groups; the Android wrapper was intentionally discarding alerts whenever GLACIA was foregrounded. That prevented banners while viewing Chats, Discover or Settings.
+- Incoming groups now post Android notifications when the app is foregrounded **unless the same chat is already open**. When backgrounded, messages continue to post while the TDLib process is alive. Muted/silent notifications continue using the quiet channel.
+- New unmuted messages use a new Android **HIGH** importance channel, `glacia_messages_heads_up` (display name **Telegram message banners**). An existing channel cannot be programmatically upgraded from DEFAULT importance on Android, so a new ID is required. The user can always disable banners or reduce that channel's importance in Android Settings.
+- The built-in **Send test notification** also uses the new channel so banner/channel behavior can be verified without posting a Telegram message.
+- The diagnostics now distinguish alerts suppressed for the currently open conversation from actual alerts posted to the new high-importance channel. A new incoming message in a *different* chat should be eligible for a banner even while GLACIA is foregrounded.
+- `setOnlyAlertOnce(false)` means subsequent incoming messages in the same TDLib notification group can alert again; Android DND, notification bubbles, channel settings and device-level prioritization still control actual display.
+
+**Device QA:**
+1. Install this update in Android Studio **over** the previous app, do not clear Telegram data.
+2. Open GLACIA Settings → Android notification settings → **Telegram message banners**. Verify notifications are enabled and the channel is configured for pop-on-screen/banner notifications, with device DND off.
+3. In GLACIA Settings, tap **Send test notification**. With the screen unlocked, expect a heads-up banner or at least a notification in the shade. If only the shade works, adjust channel importance/OS pop-up settings. Android chooses whether to show a banner; apps cannot guarantee one.
+4. Remain on GLACIA Chats or Settings. From a **second Telegram account**, send a brand-new message to an **unmuted** private chat different from any open conversation. Confirm new `Android alerts posted` > 0 and a new notification appears. This is intentionally allowed while the app is in the foreground.
+5. Open the specific chat, then send another message to it. Do **not** show redundant heads-up notifications for the conversation currently visible.
+6. Return to Chats, press Android Home, and send another new message. Notifications should post only while the process remains active. If the process is killed, **background push is still not implemented**.
+7. For muted Telegram conversations, notifications might be placed in the silent channel and not appear as a heads-up banner. Do not bypass Telegram mutes or expose message contents.
+
+**Limitations:** Heads-up presentation depends on Android version, per-channel notification permissions, Do Not Disturb and device UI. Reliability across process death requires a separate Telegram push/background delivery design.
