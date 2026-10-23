@@ -36,6 +36,7 @@ class GlaciaNotifications(context: Context) {
     private val app = context.applicationContext
     private val manager = app.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     @Volatile private var foreground = true
+    @Volatile private var visibleChatId: Long? = null
     private val healthLock = Any()
     private val _health = MutableStateFlow(NotificationHealth())
     val health = _health.asStateFlow()
@@ -46,14 +47,20 @@ class GlaciaNotifications(context: Context) {
 
 
     companion object {
-        private const val MESSAGES = "glacia_messages"
+        // The old "glacia_messages" channel has DEFAULT importance; Android
+        // will not let an app increase an existing channel's importance.
+        // Use a new channel ID for opt-in heads-up notifications.
+        private const val HEADS_UP = "glacia_messages_heads_up"
         private const val SILENT = "glacia_messages_silent"
     }
 
     init {
         manager.createNotificationChannel(
-            NotificationChannel(MESSAGES, "Telegram messages", NotificationManager.IMPORTANCE_DEFAULT)
-                .apply { description = "Privacy-preserving Telegram alerts"; lockscreenVisibility = Notification.VISIBILITY_SECRET }
+            NotificationChannel(HEADS_UP, "Telegram message banners", NotificationManager.IMPORTANCE_HIGH)
+                .apply {
+                    description = "New Telegram messages with optional heads-up banners"
+                    lockscreenVisibility = Notification.VISIBILITY_SECRET
+                }
         )
         manager.createNotificationChannel(
             NotificationChannel(SILENT, "Silent Telegram messages", NotificationManager.IMPORTANCE_LOW)
@@ -64,6 +71,11 @@ class GlaciaNotifications(context: Context) {
     fun setForeground(isForeground: Boolean) {
         foreground = isForeground
         record { it.copy(inForeground = isForeground) }
+    }
+
+    /** A visible conversation already displays new messages, so avoid double alerts. */
+    fun setVisibleChat(chatId: Long?) {
+        visibleChatId = chatId
     }
 
     /** A deliberate local test to distinguish Android permission/channel issues
@@ -78,7 +90,7 @@ class GlaciaNotifications(context: Context) {
             app, 0, launch,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val test = Notification.Builder(app, MESSAGES)
+        val test = Notification.Builder(app, HEADS_UP)
             .setSmallIcon(android.R.drawable.ic_dialog_email)
             .setContentTitle("GLACIA · Test notification")
             .setContentText("Android notifications are enabled.")
@@ -98,9 +110,7 @@ class GlaciaNotifications(context: Context) {
         if (update is TdApi.UpdateNewMessage && !update.message.isOutgoing) {
             record { it.copy(
                 incomingMessages = it.incomingMessages + 1,
-                lastDecision = if (foreground)
-                    "Incoming message seen while app foregrounded (OS alert suppressed)"
-                else "Incoming message seen in background; waiting for TDLib notification"
+                lastDecision = "Incoming message received; waiting for TDLib notification group"
             ) }
             return
         }
@@ -121,8 +131,8 @@ class GlaciaNotifications(context: Context) {
             record { it.copy(lastDecision = "TDLib group updated without new notifications") }
             return
         }
-        if (foreground) {
-            record { it.copy(lastDecision = "App foregrounded: Android alert intentionally skipped") }
+        if (foreground && visibleChatId == update.chatId) {
+            record { it.copy(lastDecision = "Open conversation: duplicate Android alert suppressed") }
             return
         }
         if (!hasPermission()) {
@@ -130,7 +140,7 @@ class GlaciaNotifications(context: Context) {
             return
         }
         val quiet = update.notificationSoundId == 0L
-        val channel = if (quiet) SILENT else MESSAGES
+        val channel = if (quiet) SILENT else HEADS_UP
         if (manager.getNotificationChannel(channel)?.importance ==
             NotificationManager.IMPORTANCE_NONE) {
             record { it.copy(lastDecision = "Android message channel disabled: $channel") }
@@ -152,15 +162,17 @@ class GlaciaNotifications(context: Context) {
             .setAutoCancel(true)
             .setCategory(Notification.CATEGORY_MESSAGE)
             .setVisibility(Notification.VISIBILITY_SECRET)
-            .setOnlyAlertOnce(true)
+            // A later message in the same Telegram group should be able to
+            // generate another heads-up banner instead of being permanently quiet.
+            .setOnlyAlertOnce(false)
             .build()
         try {
             manager.notify(id, notification)
             record { it.copy(
                 posted = it.posted + 1,
                 lastDecision = if (quiet)
-                    "Posted a quiet notification (check Silent channel in shade)"
-                else "Posted an Android message notification"
+                    "Posted a quiet notification (no heads-up for silent messages)"
+                else "Posted a Telegram message notification (heads-up channel)"
             ) }
         } catch (_: SecurityException) {
             record { it.copy(lastDecision = "Android rejected notification permission") }
