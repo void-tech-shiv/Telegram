@@ -39,10 +39,10 @@ internal class NativeCallMedia(
     fun protocol(): TdApi.CallProtocol {
         ensureWebRtcContext()
         val p = NTgCalls.getProtocol()
-        check(p.minLayer > 0 && p.maxLayer >= p.minLayer && p.libraryVersions.isNotEmpty()) {
+        check(p.min_layer > 0 && p.max_layer >= p.min_layer && p.library_versions.isNotEmpty()) {
             "Native Telegram calling protocol unavailable."
         }
-        return TdApi.CallProtocol(p.udpP2p, p.udpReflector, p.minLayer, p.maxLayer, p.libraryVersions.toTypedArray())
+        return TdApi.CallProtocol(p.udp_p2p, p.udp_reflector, p.min_layer, p.max_layer, p.library_versions.toTypedArray())
     }
 
     /** Does not ring anyone, and tests whether the native library can initialize. */
@@ -60,13 +60,13 @@ internal class NativeCallMedia(
         // TDLib uses call.id for signaling. NTgCalls identifies the session by user.id.
         // Always map callback data to the currently active TDLib call in the controller.
         mediaUserId = call.userId
-        instance.setSignalingDataCallback { id, bytes ->
+        instance.onSignalingData { id, bytes ->
             if (id == mediaUserId && bytes != null && bytes.isNotEmpty()) onSignaling(bytes)
         }
-        instance.setConnectionChangeCallback { id, info ->
+        instance.onConnectionChange { id, info ->
             if (id == mediaUserId) onConnection(info.state.name)
         }
-        instance.setFrameCallback { id, mode, device, frames ->
+        instance.onFrames { id, mode, device, frames ->
             if (id == mediaUserId && mode == StreamMode.PLAYBACK && device == StreamDevice.CAMERA) {
                 frames.forEach(onRemoteFrame)
             }
@@ -74,17 +74,17 @@ internal class NativeCallMedia(
 
         // Allow TDLib to conduct Diffie-Hellman. Native media uses its resulting key.
         instance.createP2pCall(call.userId)
-        val mic = AudioDescription(MediaSource.DEVICE, "{\"is_microphone\":true}", true, 48000, 2)
-        val speaker = AudioDescription(MediaSource.DEVICE, "{\"is_microphone\":false}", true, 48000, 2)
+        val mic = AudioDescription(MediaSource.DEVICE, 48000, 2, "{\"is_microphone\":true}", true)
+        val speaker = AudioDescription(MediaSource.DEVICE, 48000, 2, "{\"is_microphone\":false}", true)
         // DEVICE capture transmits camera frames; EXTERNAL playback exposes decoded
         // remote I420 frames through the frame callback for rendering in Compose.
         val camera = if (call.isVideo) {
             val device = NTgCalls.getMediaDevices().camera.firstOrNull()
                 ?: error("No camera available for native video calling.")
-            VideoDescription(MediaSource.DEVICE, device.metadata, true, 640, 480, 24)
+            VideoDescription(MediaSource.DEVICE, 640, 480, 24, device.metadata, true)
         } else null
         val remoteVideo = if (call.isVideo) {
-            VideoDescription(MediaSource.EXTERNAL, "", false, 0, 0, 0)
+            VideoDescription(MediaSource.EXTERNAL, 0, 0, 0, "", false)
         } else null
         instance.setStreamSources(call.userId, StreamMode.CAPTURE, MediaDescription(mic, null, camera, null))
         instance.setStreamSources(call.userId, StreamMode.PLAYBACK, MediaDescription(null, speaker, remoteVideo, null))
