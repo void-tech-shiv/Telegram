@@ -300,6 +300,55 @@ private fun GlaciaApp(
         finally { session.closeChat(chatId) }
     }
 
+    // Phase 3.9: actual TDLib incoming 1:1 call invitation, not simulated ringing.
+    // This UI deliberately has no "Answer" button without a real media engine.
+    val incomingCall by session.incomingCall.collectAsState()
+    val decliningIncomingCall by session.decliningIncomingCall.collectAsState()
+    val incomingCallError by session.incomingCallError.collectAsState()
+    var ignoredCallId by remember { mutableIntStateOf(-1) }
+    var officialAppMissing by remember(incomingCall?.callId) { mutableStateOf(false) }
+    incomingCall?.let { ringing ->
+        if (resumed && ignoredCallId != ringing.callId) {
+            AlertDialog(
+                onDismissRequest = { ignoredCallId = ringing.callId },
+                title = {
+                    Text(if (ringing.video) "Incoming Telegram video call" else "Incoming Telegram voice call")
+                },
+                text = {
+                    Column {
+                        Text(
+                            "${ringing.callerName} is calling. GLACIA can decline this invitation, " +
+                                "but cannot answer until secure in-app voice/video transport is integrated. " +
+                                "To answer, open the official Telegram app."
+                        )
+                        incomingCallError?.let {
+                            Spacer(Modifier.height(8.dp))
+                            Text(it, color = MaterialTheme.colorScheme.error)
+                        }
+                        if (officialAppMissing) {
+                            Spacer(Modifier.height(8.dp))
+                            Text("Official Telegram isn't available on this device.")
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        if (!session.openOfficialTelegram()) officialAppMissing = true
+                    }) { Text("Open Telegram") }
+                },
+                dismissButton = {
+                    Row {
+                        TextButton(
+                            enabled = !decliningIncomingCall,
+                            onClick = { session.declineIncomingCall() }
+                        ) { Text(if (decliningIncomingCall) "Declining…" else "Decline") }
+                        TextButton(onClick = { ignoredCallId = ringing.callId }) { Text("Ignore") }
+                    }
+                }
+            )
+        }
+    }
+
     BackHandler(enabled = current != null) { openChatId = null }
 
     // Capture only the smooth aurora layer for Haze, never the scrollable content.
