@@ -1,6 +1,7 @@
 package dev.glacia.app.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -23,6 +24,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.style.TextOverflow
@@ -109,11 +112,12 @@ fun ConversationScreen(
     }
 
     Column(Modifier.fillMaxSize()) {
-        Box(Modifier.weight(1f)) {
+        // Keep partially scrolled messages clipped beneath the header, not over it.
+        Box(Modifier.weight(1f).clipToBounds()) {
             LazyColumn(
                 state = timelineState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 17.dp, vertical = 18.dp),
+                modifier = Modifier.fillMaxSize().clipToBounds(),
+                contentPadding = PaddingValues(horizontal = 17.dp, vertical = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 item {
@@ -138,8 +142,10 @@ fun ConversationScreen(
                             if (msg.outgoing) Arrangement.End else Arrangement.Start
                     ) {
                         val isVisual = msg.mediaType == "photo" || msg.mediaType == "video"
+                        val imageDocument = msg.mediaType == "document" &&
+                            DocumentKind.isImage(msg.attachmentMime, msg.attachmentName)
                         val bubbleShape = RoundedCornerShape(22.dp)
-                        val bubbleWidth = if (isVisual) {
+                        val bubbleWidth = if (isVisual || imageDocument) {
                             Modifier.fillMaxWidth(0.80f).widthIn(max = 278.dp)
                         } else {
                             Modifier.widthIn(max = 304.dp)
@@ -212,29 +218,56 @@ fun ConversationScreen(
                                 )
                                 val imagePath = if (isImage) thumbnailPath ?: downloadedPath else null
                                 if (imagePath != null) {
-                                    AsyncImage(
-                                        model = File(imagePath),
-                                        contentDescription = "Document image preview",
-                                        contentScale = ContentScale.Fit,
-                                        modifier = Modifier.fillMaxWidth().height(172.dp)
-                                            .clip(RoundedCornerShape(15.dp))
-                                    )
+                                    // Glass-like blurred fill behind portrait images prevents
+                                    // blank side gutters while keeping the full image uncropped.
+                                    Box(
+                                        Modifier.fillMaxWidth()
+                                            .height(194.dp)
+                                            .clip(RoundedCornerShape(16.dp))
+                                            .then(
+                                                if (downloadedPath != null) Modifier.clickable {
+                                                    imageViewer = downloadedPath
+                                                } else Modifier
+                                            )
+                                    ) {
+                                        AsyncImage(
+                                            model = File(imagePath),
+                                            contentDescription = null,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize().blur(20.dp)
+                                        )
+                                        Box(
+                                            Modifier.fillMaxSize()
+                                                .background(Color(0x550B1433))
+                                        )
+                                        AsyncImage(
+                                            model = File(imagePath),
+                                            contentDescription = "Image attachment preview",
+                                            contentScale = ContentScale.Fit,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
                                     Spacer(Modifier.height(8.dp))
                                 }
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier.fillMaxWidth()
                                         .clip(RoundedCornerShape(14.dp))
-                                        .background(highlight.copy(alpha = 0.13f))
-                                        .padding(horizontal = 10.dp, vertical = 10.dp)
+                                        .background(highlight.copy(alpha = if (imagePath != null) 0.06f else 0.13f))
+                                        .padding(
+                                            horizontal = 10.dp,
+                                            vertical = if (imagePath != null) 7.dp else 10.dp
+                                        )
                                 ) {
-                                    Icon(
-                                        Icons.Rounded.InsertDriveFile,
-                                        contentDescription = null,
-                                        tint = highlight,
-                                        modifier = Modifier.size(29.dp)
-                                    )
-                                    Spacer(Modifier.width(9.dp))
+                                    if (imagePath == null) {
+                                        Icon(
+                                            Icons.Rounded.InsertDriveFile,
+                                            contentDescription = null,
+                                            tint = highlight,
+                                            modifier = Modifier.size(29.dp)
+                                        )
+                                        Spacer(Modifier.width(9.dp))
+                                    }
                                     Column(Modifier.weight(1f)) {
                                         Text(
                                             msg.attachmentName?.takeIf { it.isNotBlank() }
