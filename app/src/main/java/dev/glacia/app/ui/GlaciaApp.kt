@@ -1,40 +1,37 @@
 package dev.glacia.app.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
-import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material.icons.rounded.Send
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -46,7 +43,6 @@ import dev.chrisbanes.haze.rememberHazeState
 import dev.chrisbanes.haze.glass.GlassStyle
 import dev.chrisbanes.haze.glass.hazeGlass
 import dev.glacia.app.data.Chat
-import dev.glacia.app.data.Message
 import dev.glacia.app.data.TdlibSession
 import dev.glacia.app.settings.ThemeChoice
 import dev.glacia.app.settings.ThemePreferences
@@ -65,7 +61,7 @@ fun GlaciaRoot() {
     }
     val auth by session.auth.collectAsState()
     val realChats by session.chats.collectAsState()
-    GlaciaTheme(choice = theme) { dark ->
+    GlaciaTheme(theme) { dark ->
         if (auth is TdlibSession.Auth.Ready) {
             GlaciaApp(
                 dark = dark,
@@ -79,11 +75,17 @@ fun GlaciaRoot() {
     }
 }
 
+private fun ink(dark: Boolean) = if (dark) Color(0xFFF3F6FF) else Color(0xFF17213A)
+private fun mutedInk(dark: Boolean) = if (dark) Color(0xFFB0BDD7) else Color(0xFF56647F)
+private fun accent(dark: Boolean) = if (dark) Color(0xFF9BE4FF) else Color(0xFF4A5DE0)
+private fun tile(dark: Boolean) = if (dark) Color(0xE61A2540) else Color(0xDDEFFFFFF)
+
 @Composable
 private fun GlassPanel(
     hazeState: HazeState,
+    dark: Boolean,
     modifier: Modifier = Modifier,
-    radius: Dp = 28.dp,
+    radius: Dp = 26.dp,
     content: @Composable BoxScope.() -> Unit
 ) {
     val shape = RoundedCornerShape(radius)
@@ -91,7 +93,12 @@ private fun GlassPanel(
         modifier = modifier
             .clip(shape)
             .hazeGlass(input = HazeInput.Backdrop(hazeState), style = GlassStyle.regular)
-            .border(1.dp, Color.White.copy(alpha = 0.24f), shape),
+            .background(if (dark) Color(0xB8172544) else Color(0xCCFFFFFF))
+            .border(
+                1.dp,
+                if (dark) Color.White.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.72f),
+                shape
+            ),
         content = content
     )
 }
@@ -104,100 +111,100 @@ private fun GlaciaApp(
     onThemeChange: (ThemeChoice) -> Unit
 ) {
     val hazeState = rememberHazeState()
-    val chats = liveChats
     var tab by rememberSaveable { mutableStateOf("Chats") }
     var openChatId by rememberSaveable { mutableStateOf<Long?>(null) }
     var query by rememberSaveable { mutableStateOf("") }
-    val current = chats.firstOrNull { it.id == openChatId }
+    val current = liveChats.firstOrNull { it.id == openChatId }
+
     BackHandler(enabled = current != null) { openChatId = null }
 
+    // Capture only the smooth aurora layer for Haze, never the scrollable content.
+    // This prevents recursive backdrop capture and rectangle-shaped blur artifacts.
     Box(Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxSize().hazeSource(hazeState)) {
-            AuroraBackground(dark)
-            if (current != null) {
-                Conversation(
-                    chat = current,
-                    messages = emptyList(),
-                    dark = dark
-                )
-            } else {
-                when (tab) {
-                    "Chats" -> ChatList(
-                        chats = chats.filter {
-                            it.title.contains(query, ignoreCase = true) ||
-                                it.preview.contains(query, ignoreCase = true)
-                        },
-                        query = query,
-                        onQuery = { query = it },
-                        dark = dark,
-                        onOpen = { openChatId = it.id }
-                    )
-                    "Discover" -> DiscoverScreen()
-                    else -> SettingsScreen(
-                        selected = selectedTheme,
-                        onSelect = onThemeChange
-                    )
-                }
-            }
-        }
+        AuroraBackground(dark, Modifier.fillMaxSize().hazeSource(hazeState))
 
-        GlassPanel(
-            hazeState = hazeState,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            radius = 26.dp
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().height(66.dp).padding(horizontal = 18.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (current != null) {
-                    IconButton(onClick = { openChatId = null }) {
-                        Icon(Icons.Rounded.ArrowBack, contentDescription = "Back")
-                    }
-                    Avatar(current.title, current.id, Modifier.size(40.dp))
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(current.title, fontWeight = FontWeight.Bold, maxLines = 1)
-                        Text("Telegram • read-only preview", style = MaterialTheme.typography.labelSmall)
-                    }
-                } else {
-                    Column(Modifier.weight(1f)) {
-                        Text("GLACIA", fontWeight = FontWeight.ExtraBold, fontSize = 23.sp,
-                            letterSpacing = 2.sp)
-                        Text("THE GLASS MESSENGER", fontSize = 9.sp,
-                            letterSpacing = 2.sp, color = MaterialTheme.colorScheme.primary)
-                    }
-                    Surface(
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.13f),
-                        shape = CircleShape
-                    ) {
-                        Icon(Icons.Rounded.AutoAwesome, contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(12.dp))
-                    }
-                }
-            }
-        }
-
-        if (current == null) {
+        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
             GlassPanel(
                 hazeState = hazeState,
-                modifier = Modifier.align(Alignment.BottomCenter)
-                    .fillMaxWidth().navigationBarsPadding()
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
-                radius = 32.dp
+                dark = dark,
+                modifier = Modifier.fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 6.dp)
             ) {
                 Row(
-                    Modifier.fillMaxWidth().padding(vertical = 11.dp, horizontal = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly
+                    Modifier.fillMaxWidth().heightIn(min = 66.dp)
+                        .padding(horizontal = 16.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    NavigationTab("Chats", tab == "Chats", Icons.Rounded.ChatBubbleOutline) { tab = "Chats" }
-                    NavigationTab("Discover", tab == "Discover", Icons.Rounded.Explore) { tab = "Discover" }
-                    NavigationTab("Settings", tab == "Settings", Icons.Rounded.Settings) { tab = "Settings" }
+                    if (current != null) {
+                        IconButton(onClick = { openChatId = null }) {
+                            Icon(Icons.Rounded.ArrowBack, "Back", tint = ink(dark))
+                        }
+                        Avatar(current.title, current.id, Modifier.size(42.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(current.title, color = ink(dark), fontWeight = FontWeight.Bold,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("Read-only preview", color = mutedInk(dark), fontSize = 11.sp)
+                        }
+                    } else {
+                        Column(Modifier.weight(1f)) {
+                            Text("GLACIA", color = ink(dark), fontSize = 22.sp,
+                                fontWeight = FontWeight.ExtraBold, letterSpacing = 1.6.sp)
+                            Text("LIQUID GLASS MESSENGER", color = accent(dark),
+                                fontSize = 9.sp, letterSpacing = 1.5.sp)
+                        }
+                        Box(
+                            Modifier.size(43.dp).clip(CircleShape)
+                                .background(accent(dark).copy(alpha = 0.16f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Rounded.AutoAwesome, null, tint = accent(dark))
+                        }
+                    }
+                }
+            }
+
+            Box(Modifier.weight(1f)) {
+                if (current != null) {
+                    ConversationPreview(dark)
+                } else {
+                    when (tab) {
+                        "Chats" -> ChatList(
+                            chats = liveChats,
+                            query = query,
+                            onQuery = { query = it },
+                            dark = dark,
+                            onOpen = { openChatId = it.id }
+                        )
+                        "Discover" -> DiscoverScreen(dark)
+                        else -> SettingsScreen(selectedTheme, dark, onThemeChange)
+                    }
+                }
+            }
+
+            if (current == null) {
+                GlassPanel(
+                    hazeState = hazeState,
+                    dark = dark,
+                    modifier = Modifier.fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 12.dp),
+                    radius = 30.dp
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        NavigationTab("Chats", tab == "Chats", dark, Icons.Rounded.ChatBubbleOutline) {
+                            tab = "Chats"
+                        }
+                        NavigationTab("Discover", tab == "Discover", dark, Icons.Rounded.Explore) {
+                            tab = "Discover"
+                        }
+                        NavigationTab("Settings", tab == "Settings", dark, Icons.Rounded.Settings) {
+                            tab = "Settings"
+                        }
+                    }
                 }
             }
         }
@@ -205,19 +212,36 @@ private fun GlaciaApp(
 }
 
 @Composable
-private fun AuroraBackground(dark: Boolean) {
-    val c1 = if (dark) Color(0xFF07101D) else Color(0xFFE8F7FF)
-    val c2 = if (dark) Color(0xFF23143C) else Color(0xFFE6E1FF)
-    Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(c1, c2, c1)))) {
-        Box(Modifier.align(Alignment.TopEnd).offset(x = 72.dp, y = 72.dp)
-            .size(280.dp).blur(88.dp).background(
-                if (dark) Color(0x994858C6) else Color(0x7758B7FF), CircleShape))
-        Box(Modifier.align(Alignment.CenterStart).offset(x = (-92).dp, y = 38.dp)
-            .size(290.dp).blur(100.dp).background(
-                if (dark) Color(0x886147A8) else Color(0x667E6DFF), CircleShape))
-        Box(Modifier.align(Alignment.BottomEnd).offset(x = 42.dp, y = (-70).dp)
-            .size(230.dp).blur(90.dp).background(
-                if (dark) Color(0x9960B9E0) else Color(0x8865CDE3), CircleShape))
+private fun AuroraBackground(dark: Boolean, modifier: Modifier = Modifier) {
+    val top = if (dark) Color(0xFF080F23) else Color(0xFFE9F4FF)
+    val bottom = if (dark) Color(0xFF0C1126) else Color(0xFFF3EDFF)
+    val blue = if (dark) Color(0xFF324AA4) else Color(0xFFB4D6FF)
+    val violet = if (dark) Color(0xFF49346C) else Color(0xFFDCD2FF)
+    val teal = if (dark) Color(0xFF1C7283) else Color(0xFFBAEAF0)
+    Canvas(modifier) {
+        drawRect(brush = Brush.verticalGradient(listOf(top, bottom)))
+        val radius = maxOf(size.width, size.height) * 0.64f
+        val topRight = Offset(size.width * 1.04f, size.height * 0.14f)
+        val left = Offset(size.width * -0.18f, size.height * 0.54f)
+        val bottomRight = Offset(size.width * 0.93f, size.height * 0.92f)
+        drawCircle(
+            brush = Brush.radialGradient(
+                listOf(blue.copy(alpha = if (dark) 0.55f else 0.85f), Color.Transparent),
+                center = topRight, radius = radius
+            ), radius = radius, center = topRight
+        )
+        drawCircle(
+            brush = Brush.radialGradient(
+                listOf(violet.copy(alpha = if (dark) 0.44f else 0.70f), Color.Transparent),
+                center = left, radius = radius
+            ), radius = radius, center = left
+        )
+        drawCircle(
+            brush = Brush.radialGradient(
+                listOf(teal.copy(alpha = if (dark) 0.38f else 0.66f), Color.Transparent),
+                center = bottomRight, radius = radius
+            ), radius = radius, center = bottomRight
+        )
     }
 }
 
@@ -229,96 +253,102 @@ private fun ChatList(
     dark: Boolean,
     onOpen: (Chat) -> Unit
 ) {
+    val filtered = remember(chats, query) {
+        chats.filter {
+            it.title.contains(query, ignoreCase = true) ||
+                it.preview.contains(query, ignoreCase = true)
+        }
+    }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(top = 111.dp, bottom = 115.dp),
-        verticalArrangement = Arrangement.spacedBy(7.dp)
+        contentPadding = PaddingValues(top = 14.dp, bottom = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp)
     ) {
         item {
-            Column(Modifier.padding(horizontal = 22.dp)) {
-                Text("Your conversations", fontSize = 30.sp, fontWeight = FontWeight.Bold)
+            Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp)) {
+                Text("Your conversations", fontSize = 26.sp,
+                    fontWeight = FontWeight.Bold, color = ink(dark), maxLines = 2)
                 Spacer(Modifier.height(5.dp))
-                Text("A more beautiful way to connect.",
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.65f))
-                Spacer(Modifier.height(22.dp))
+                Text("All your chats, with a little more magic.",
+                    fontSize = 13.sp, color = mutedInk(dark))
+                Spacer(Modifier.height(18.dp))
                 Row(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp))
-                        .background(MaterialTheme.colorScheme.surface.copy(alpha = if (dark) 0.35f else 0.52f))
-                        .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(22.dp))
-                        .padding(horizontal = 17.dp, vertical = 15.dp),
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
+                        .background(tile(dark))
+                        .border(1.dp, Color.White.copy(alpha = if (dark) 0.12f else 0.78f),
+                            RoundedCornerShape(20.dp))
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Rounded.Search, null, tint = MaterialTheme.colorScheme.primary)
+                    Icon(Icons.Rounded.Search, null, tint = accent(dark))
                     Spacer(Modifier.width(12.dp))
                     Box(Modifier.weight(1f)) {
                         if (query.isEmpty()) {
-                            Text("Search Telegram chats", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.48f))
+                            Text("Search conversations", color = mutedInk(dark), fontSize = 14.sp)
                         }
                         BasicTextField(
                             value = query,
                             onValueChange = onQuery,
                             singleLine = true,
-                            textStyle = androidx.compose.ui.text.TextStyle(color = MaterialTheme.colorScheme.onSurface)
+                            textStyle = TextStyle(color = ink(dark), fontSize = 14.sp),
+                            cursorBrush = SolidColor(accent(dark)),
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
                     if (query.isNotEmpty()) {
-                        Icon(Icons.Rounded.Close, "Clear", Modifier.clickable { onQuery("") })
+                        Icon(Icons.Rounded.Close, "Clear search",
+                            Modifier.clickable { onQuery("") }, tint = mutedInk(dark))
                     }
                 }
-                Spacer(Modifier.height(20.dp))
-                Text("TELEGRAM CHATS • LIVE", fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp, letterSpacing = 1.5.sp,
-                    color = MaterialTheme.colorScheme.primary)
-                Spacer(Modifier.height(9.dp))
+                Spacer(Modifier.height(17.dp))
+                Text("CHATS  •  LIVE", fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp,
+                    color = accent(dark))
+                Spacer(Modifier.height(7.dp))
             }
         }
-        items(chats, key = { it.id }) { chat ->
+        items(filtered, key = { it.id }) { chat ->
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp)
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = if (dark) 0.27f else 0.4f))
+                Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 3.dp)
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(tile(dark))
+                    .border(1.dp,
+                        Color.White.copy(alpha = if (dark) 0.08f else 0.66f),
+                        RoundedCornerShape(22.dp))
                     .clickable { onOpen(chat) }
-                    .padding(horizontal = 12.dp, vertical = 15.dp),
+                    .padding(horizontal = 13.dp, vertical = 13.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box {
-                    Avatar(chat.title, chat.id, Modifier.size(56.dp))
-                    if (chat.isOnline) {
-                        Box(Modifier.align(Alignment.BottomEnd).size(14.dp)
-                            .background(Color(0xFF36D8A0), CircleShape)
-                            .border(2.dp, MaterialTheme.colorScheme.background, CircleShape))
-                    }
-                }
-                Spacer(Modifier.width(14.dp))
+                Avatar(chat.title, chat.id, Modifier.size(52.dp))
+                Spacer(Modifier.width(13.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(chat.title, fontWeight = FontWeight.SemiBold, fontSize = 16.sp,
+                    Text(chat.title.ifBlank { "Unnamed chat" }, color = ink(dark),
+                        fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Spacer(Modifier.height(5.dp))
-                    Text(chat.preview, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
+                    Text(chat.preview, color = mutedInk(dark), fontSize = 12.sp,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(chat.time, fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.57f))
-                    Spacer(Modifier.height(8.dp))
-                    if (chat.unread > 0) {
-                        Box(Modifier.background(MaterialTheme.colorScheme.primary, CircleShape)
-                            .padding(horizontal = 8.dp, vertical = 3.dp)) {
-                            Text(chat.unread.toString(), color = MaterialTheme.colorScheme.background,
-                                fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                    } else {
-                        Icon(Icons.Rounded.Check, null, Modifier.size(17.dp),
-                            tint = MaterialTheme.colorScheme.primary)
+                if (chat.unread > 0) {
+                    Spacer(Modifier.width(8.dp))
+                    Box(
+                        Modifier.clip(CircleShape).background(accent(dark))
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(chat.unread.coerceAtMost(99).toString(), fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (dark) Color(0xFF13223B) else Color.White)
                     }
                 }
             }
         }
-        if (chats.isEmpty()) {
+        if (filtered.isEmpty()) {
             item {
-                Text("No matching Telegram chats.", Modifier.padding(28.dp),
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                Text(if (query.isBlank()) "Your Telegram chat list is empty."
+                     else "No matching conversations.",
+                    color = mutedInk(dark),
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 28.dp))
             }
         }
     }
@@ -327,103 +357,39 @@ private fun ChatList(
 @Composable
 private fun Avatar(name: String, id: Long, modifier: Modifier = Modifier) {
     val tones = listOf(
-        listOf(Color(0xFF6D77FD), Color(0xFFB487E9)),
-        listOf(Color(0xFF2697C4), Color(0xFF45D3C2)),
-        listOf(Color(0xFFB15FBB), Color(0xFFE38BA4)),
-        listOf(Color(0xFF447AD5), Color(0xFF7F98F7))
+        listOf(Color(0xFF546FE5), Color(0xFFA18AF5)),
+        listOf(Color(0xFF2C93BE), Color(0xFF39B7B5)),
+        listOf(Color(0xFFAC5BAC), Color(0xFFDF88AB)),
+        listOf(Color(0xFF4674D0), Color(0xFF7E9BE8))
     )
+    val initials = name.trim().split(Regex("\\s+")).take(2)
+        .mapNotNull { it.firstOrNull()?.toString() }
+        .joinToString("").uppercase().ifBlank { "?" }
     Box(
-        modifier.clip(CircleShape).background(Brush.linearGradient(tones[Math.floorMod(id, tones.size)])),
+        modifier.clip(CircleShape)
+            .background(Brush.linearGradient(tones[Math.floorMod(id, tones.size)])),
         contentAlignment = Alignment.Center
     ) {
-        Text(name.split(" ").take(2).mapNotNull { it.firstOrNull()?.toString() }
-            .joinToString("").uppercase(), color = Color.White,
-            fontSize = 17.sp, fontWeight = FontWeight.Bold)
+        Text(initials, color = Color.White, fontWeight = FontWeight.Bold,
+            fontSize = 16.sp, maxLines = 1)
     }
 }
 
 @Composable
-private fun Conversation(chat: Chat, messages: List<Message>, dark: Boolean) {
-    val state = rememberLazyListState()
-    LaunchedEffect(chat.id, messages.size) {
-        if (messages.isNotEmpty()) state.animateScrollToItem(messages.lastIndex)
-    }
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        state = state,
-        contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 108.dp, bottom = 118.dp),
-        verticalArrangement = Arrangement.spacedBy(13.dp)
+private fun ConversationPreview(dark: Boolean) {
+    Box(
+        Modifier.fillMaxSize().padding(24.dp),
+        contentAlignment = Alignment.Center
     ) {
-        item {
-            Box(Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                contentAlignment = Alignment.Center) {
-                Text("LIVE CHAT • HISTORY AND SENDING IN PHASE 3", fontSize = 10.sp,
-                    letterSpacing = 0.8.sp, color = MaterialTheme.colorScheme.primary)
-            }
-        }
-        items(messages, key = { it.id }) { message ->
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = if (message.outgoing) Arrangement.End else Arrangement.Start
-            ) {
-                Column(
-                    Modifier.widthIn(max = 300.dp)
-                        .clip(RoundedCornerShape(
-                            topStart = 22.dp, topEnd = 22.dp,
-                            bottomStart = if (message.outgoing) 22.dp else 5.dp,
-                            bottomEnd = if (message.outgoing) 5.dp else 22.dp
-                        ))
-                        .background(
-                            if (message.outgoing) MaterialTheme.colorScheme.primary.copy(alpha = if (dark) 0.28f else 0.23f)
-                            else MaterialTheme.colorScheme.surface.copy(alpha = if (dark) 0.45f else 0.65f)
-                        )
-                        .padding(horizontal = 17.dp, vertical = 12.dp)
-                ) {
-                    Text(message.text, fontSize = 15.sp, lineHeight = 21.sp)
-                    Spacer(Modifier.height(5.dp))
-                    Text(message.time, fontSize = 10.sp,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
-                        modifier = Modifier.align(Alignment.End))
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ComposerBar(hazeState: HazeState, onSend: (String) -> Unit, modifier: Modifier = Modifier) {
-    var input by rememberSaveable { mutableStateOf("") }
-    fun send() {
-        val value = input.trim()
-        if (value.isNotEmpty()) {
-            onSend(value)
-            input = ""
-        }
-    }
-    GlassPanel(
-        hazeState = hazeState,
-        modifier = modifier.fillMaxWidth().navigationBarsPadding()
-            .padding(horizontal = 14.dp, vertical = 12.dp)
-    ) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.weight(1f)) {
-                if (input.isEmpty()) Text("Message (local demo)", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
-                BasicTextField(
-                    value = input,
-                    onValueChange = { input = it },
-                    maxLines = 4,
-                    textStyle = androidx.compose.ui.text.TextStyle(
-                        color = MaterialTheme.colorScheme.onSurface, fontSize = 15.sp
-                    ),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = { send() })
-                )
-            }
-            Spacer(Modifier.width(10.dp))
-            FilledIconButton(onClick = ::send, enabled = input.isNotBlank()) {
-                Icon(Icons.Rounded.Send, contentDescription = "Add local demo message")
-            }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("✨", fontSize = 40.sp)
+            Spacer(Modifier.height(16.dp))
+            Text("Conversation preview", fontSize = 22.sp,
+                fontWeight = FontWeight.Bold, color = ink(dark))
+            Spacer(Modifier.height(12.dp))
+            Text("Live message history and sending are coming in Phase 3.",
+                color = mutedInk(dark), fontSize = 14.sp,
+                style = MaterialTheme.typography.bodyMedium)
         }
     }
 }
@@ -432,70 +398,73 @@ private fun ComposerBar(hazeState: HazeState, onSend: (String) -> Unit, modifier
 private fun NavigationTab(
     label: String,
     selected: Boolean,
+    dark: Boolean,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     onClick: () -> Unit
 ) {
     Column(
-        Modifier.clip(RoundedCornerShape(24.dp)).clickable(onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 6.dp),
+        modifier = Modifier
+            .clip(RoundedCornerShape(22.dp))
+            .background(if (selected) accent(dark).copy(alpha = 0.16f) else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 9.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Icon(icon, contentDescription = label,
-            tint = if (selected) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-        Spacer(Modifier.height(4.dp))
-        Text(label, fontSize = 11.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
+            tint = if (selected) accent(dark) else mutedInk(dark))
+        Spacer(Modifier.height(5.dp))
+        Text(label, fontSize = 11.sp, color = if (selected) ink(dark) else mutedInk(dark),
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
     }
 }
 
 @Composable
-private fun DiscoverScreen() {
-    Column(Modifier.fillMaxSize().padding(top = 150.dp, start = 28.dp, end = 28.dp)) {
-        Icon(Icons.Rounded.Explore, null, Modifier.size(46.dp), tint = MaterialTheme.colorScheme.primary)
-        Spacer(Modifier.height(24.dp))
-        Text("Discover", fontSize = 32.sp, fontWeight = FontWeight.Bold)
+private fun DiscoverScreen(dark: Boolean) {
+    Column(Modifier.fillMaxSize().padding(26.dp)) {
+        Spacer(Modifier.height(20.dp))
+        Icon(Icons.Rounded.Explore, null, Modifier.size(45.dp), tint = accent(dark))
+        Spacer(Modifier.height(18.dp))
+        Text("Discover", color = ink(dark), fontSize = 29.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(12.dp))
-        Text("Explore channels, groups and people after TDLib integration in Phase 2.",
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f))
-        Spacer(Modifier.height(22.dp))
-        Text("No network requests are made in this preview.",
-            fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+        Text("Search and discovery tools arrive in a later phase.",
+            color = mutedInk(dark))
     }
 }
 
 @Composable
-private fun SettingsScreen(selected: ThemeChoice, onSelect: (ThemeChoice) -> Unit) {
-    Column(
-        Modifier.fillMaxSize().padding(top = 126.dp, start = 24.dp, end = 24.dp, bottom = 110.dp)
-    ) {
-        Text("Appearance", fontSize = 32.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(8.dp))
-        Text("Choose your perfect glass.", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f))
-        Spacer(Modifier.height(30.dp))
+private fun SettingsScreen(selected: ThemeChoice, dark: Boolean, onSelect: (ThemeChoice) -> Unit) {
+    Column(Modifier.fillMaxSize().padding(horizontal = 23.dp, vertical = 18.dp)) {
+        Text("Appearance", color = ink(dark), fontSize = 29.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(7.dp))
+        Text("Choose your perfect glass.", color = mutedInk(dark))
+        Spacer(Modifier.height(22.dp))
         ThemeChoice.entries.forEach { option ->
             Row(
-                Modifier.fillMaxWidth().padding(vertical = 5.dp)
+                Modifier.fillMaxWidth().padding(vertical = 6.dp)
                     .clip(RoundedCornerShape(20.dp))
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.35f))
+                    .background(tile(dark))
                     .clickable { onSelect(option) }
-                    .padding(20.dp),
+                    .padding(horizontal = 19.dp, vertical = 18.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(when (option) {
-                    ThemeChoice.SYSTEM -> "Follow system"
-                    ThemeChoice.DARK -> "Midnight Glass"
-                    ThemeChoice.LIGHT -> "Frosted Daylight"
-                }, Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
-                if (option == selected) {
-                    Icon(Icons.Rounded.Check, "Selected", tint = MaterialTheme.colorScheme.primary)
+                Text(
+                    when (option) {
+                        ThemeChoice.SYSTEM -> "Follow system"
+                        ThemeChoice.DARK -> "Midnight Glass"
+                        ThemeChoice.LIGHT -> "Frosted Daylight"
+                    },
+                    Modifier.weight(1f), color = ink(dark), fontWeight = FontWeight.SemiBold
+                )
+                if (selected == option) {
+                    Text("✓", color = accent(dark), fontWeight = FontWeight.Bold)
                 }
             }
         }
-        Spacer(Modifier.height(32.dp))
-        Text("PREVIEW MODE", color = MaterialTheme.colorScheme.primary,
-            fontSize = 12.sp, letterSpacing = 1.4.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(8.dp))
-        Text("Authenticated TDLib chat-list sync enabled. Messages, media and sending are planned for Phase 3.",
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f))
+        Spacer(Modifier.height(24.dp))
+        Text("PHASE 2 • READ ONLY", color = accent(dark),
+            fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp, fontSize = 11.sp)
+        Spacer(Modifier.height(7.dp))
+        Text("Your Telegram chat list is live. Message history, sending and media are not enabled yet.",
+            color = mutedInk(dark), fontSize = 13.sp)
     }
 }
