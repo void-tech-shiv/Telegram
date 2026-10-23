@@ -150,6 +150,7 @@ class TdlibSession(private val context: Context) {
     val communityState = communities.state
     fun inspectChatInfo(chatId: Long) = communities.inspect(chatId)
     fun renameCommunity(chatId: Long, title: String) = communities.rename(chatId, title)
+    fun addCommunityMember(chatId: Long, userId: Long) = communities.addMember(chatId, userId)
     fun describeCommunity(chatId: Long, about: String) = communities.description(chatId, about)
     fun markTelegramChatUnread(chatId: Long, unread: Boolean) =
         communities.markedUnread(chatId, unread)
