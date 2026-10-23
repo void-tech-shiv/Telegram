@@ -67,6 +67,7 @@ fun GlaciaRoot() {
                 dark = dark,
                 selectedTheme = theme,
                 liveChats = realChats,
+                session = session,
                 onThemeChange = { scope.launch { preferences.setTheme(it) } }
             )
         } else {
@@ -108,6 +109,7 @@ private fun GlaciaApp(
     dark: Boolean,
     selectedTheme: ThemeChoice,
     liveChats: List<Chat>,
+    session: TdlibSession,
     onThemeChange: (ThemeChoice) -> Unit
 ) {
     val hazeState = rememberHazeState()
@@ -115,6 +117,12 @@ private fun GlaciaApp(
     var openChatId by rememberSaveable { mutableStateOf<Long?>(null) }
     var query by rememberSaveable { mutableStateOf("") }
     val current = liveChats.firstOrNull { it.id == openChatId }
+    val messagesByChat by session.messages.collectAsState()
+    val loadingChats by session.historyLoading.collectAsState()
+    val messageErrors by session.messageErrors.collectAsState()
+    LaunchedEffect(current?.id) {
+        current?.let { session.loadHistory(it.id) }
+    }
 
     BackHandler(enabled = current != null) { openChatId = null }
 
@@ -123,7 +131,7 @@ private fun GlaciaApp(
     Box(Modifier.fillMaxSize()) {
         AuroraBackground(dark, Modifier.fillMaxSize().hazeSource(hazeState))
 
-        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()) {
             GlassPanel(
                 hazeState = hazeState,
                 dark = dark,
@@ -144,7 +152,7 @@ private fun GlaciaApp(
                         Column(Modifier.weight(1f)) {
                             Text(current.title, color = ink(dark), fontWeight = FontWeight.Bold,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text("Read-only preview", color = mutedInk(dark), fontSize = 11.sp)
+                            Text("Telegram • Live messages", color = mutedInk(dark), fontSize = 11.sp)
                         }
                     } else {
                         Column(Modifier.weight(1f)) {
@@ -166,7 +174,19 @@ private fun GlaciaApp(
 
             Box(Modifier.weight(1f)) {
                 if (current != null) {
-                    ConversationPreview(dark)
+                    ConversationScreen(
+                        chat = current,
+                        messages = messagesByChat[current.id].orEmpty(),
+                        loading = current.id in loadingChats,
+                        error = messageErrors[current.id],
+                        dark = dark,
+                        onSend = { text -> session.sendText(current.id, text) },
+                        onLoadMore = {
+                            val earliestId = messagesByChat[current.id]?.firstOrNull()?.id ?: 0L
+                            session.loadHistory(current.id, earliestId)
+                        },
+                        onDismissError = { session.dismissMessageError(current.id) }
+                    )
                 } else {
                     when (tab) {
                         "Chats" -> ChatList(
@@ -461,10 +481,10 @@ private fun SettingsScreen(selected: ThemeChoice, dark: Boolean, onSelect: (Them
             }
         }
         Spacer(Modifier.height(24.dp))
-        Text("PHASE 2 • READ ONLY", color = accent(dark),
+        Text("PHASE 3 • LIVE TEXT", color = accent(dark),
             fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp, fontSize = 11.sp)
         Spacer(Modifier.height(7.dp))
-        Text("Your Telegram chat list is live. Message history, sending and media are not enabled yet.",
+        Text("Telegram text history and sending are enabled. Media rendering and notifications are coming next.",
             color = mutedInk(dark), fontSize = 13.sp)
     }
 }
