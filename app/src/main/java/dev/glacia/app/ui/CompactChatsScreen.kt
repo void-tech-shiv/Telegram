@@ -3,6 +3,7 @@ package dev.glacia.app.ui
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -55,7 +56,7 @@ private fun CompactTab(label: String, selected: Boolean, dark: Boolean, onClick:
             .background(if (selected) {
                 if (dark) Color(0xFF403326) else Color(0xFFFFE8C5)
             } else Color.Transparent)
-            .then(if (selected) Modifier else Modifier)
+
             .height(37.dp)
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp),
