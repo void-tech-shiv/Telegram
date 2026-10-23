@@ -79,6 +79,56 @@ class TdlibSession(private val context: Context) {
     private val _notificationEvents = MutableStateFlow(0)
     val notificationEvents = _notificationEvents.asStateFlow()
     val notificationHealth = notifications.health
+    private val _chatMuteStates = MutableStateFlow<Map<Long, Boolean>>(emptyMap())
+    val chatMuteStates = _chatMuteStates.asStateFlow()
+    private val _muteFeedback = MutableStateFlow<String?>(null)
+    val muteFeedback = _muteFeedback.asStateFlow()
+
+    init {
+        notifications.setTitleResolver { id ->
+            synchronized(known) { known[id]?.title }
+        }
+    }
+
+    fun ensureChat(chatId: Long) {
+        if (chatId == 0L) return
+        synchronized(known) { if (known.containsKey(chatId)) return }
+        client?.send(TdApi.GetChat(chatId)) { response ->
+            if (response is TdApi.Chat) synchronized(known) {
+                known[chatId] = response
+                trackMute(response)
+                emitChats()
+            }
+        }
+    }
+
+    private fun trackMute(chat: TdApi.Chat) {
+        val settings = chat.notificationSettings
+        _chatMuteStates.value = _chatMuteStates.value +
+            (chat.id to (!settings.useDefaultMuteFor && settings.muteFor > 0))
+    }
+
+    /** Telegram-synced per-chat mute (not just Android-side filtering). */
+    fun setChatMuted(chatId: Long, muted: Boolean) {
+        val chat = synchronized(known) { known[chatId] } ?: return
+        val settings = chat.notificationSettings ?: return
+        settings.useDefaultMuteFor = false
+        settings.muteFor = if (muted) Int.MAX_VALUE else 0
+        client?.send(TdApi.SetChatNotificationSettings(chatId, settings)) { reply ->
+            if (reply is TdApi.Error) {
+                _muteFeedback.value = "Telegram could not update notification settings (code ${reply.code})"
+                client?.send(TdApi.GetChat(chatId)) { refreshed ->
+                    if (refreshed is TdApi.Chat) synchronized(known) {
+                        known[chatId] = refreshed
+                        trackMute(refreshed)
+                        emitChats()
+                    }
+                }
+            } else {
+                _muteFeedback.value = null
+            }
+        }
+    }
 
     fun sendTestNotification(): Boolean = notifications.sendTestNotification()
     fun notificationsAllowed(): Boolean = notifications.areNotificationsAllowed()
@@ -261,8 +311,16 @@ class TdlibSession(private val context: Context) {
             is TdApi.UpdateNewChat -> {
                 synchronized(known) {
                     known[obj.chat.id] = obj.chat
+                    trackMute(obj.chat)
                     _outboxRead.value = _outboxRead.value +
                         (obj.chat.id to obj.chat.lastReadOutboxMessageId)
+                    emitChats()
+                }
+            }
+            is TdApi.UpdateChatNotificationSettings -> synchronized(known) {
+                known[obj.chatId]?.let { chat ->
+                    chat.notificationSettings = obj.notificationSettings
+                    trackMute(chat)
                     emitChats()
                 }
             }
@@ -350,6 +408,7 @@ class TdlibSession(private val context: Context) {
                 _notificationEvents.value = 0
                 synchronized(known) {
                     known.clear()
+                    _chatMuteStates.value = emptyMap()
                     missingTitleRefreshes.clear()
                     _chats.value = emptyList()
                 }
