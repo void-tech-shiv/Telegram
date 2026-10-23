@@ -10,6 +10,7 @@ import kotlinx.coroutines.delay
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -606,7 +607,8 @@ private fun SettingsScreen(
     notificationPermission: Boolean,
     onNotificationPermission: () -> Unit
 ) {
-    Column(Modifier.fillMaxSize().padding(horizontal = 23.dp, vertical = 18.dp)) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+        .padding(horizontal = 23.dp, vertical = 18.dp)) {
         Text("Appearance", color = ink(dark), fontSize = 29.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(7.dp))
         Text("Choose your perfect glass.", color = mutedInk(dark))
