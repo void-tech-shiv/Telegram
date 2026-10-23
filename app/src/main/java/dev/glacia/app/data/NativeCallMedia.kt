@@ -43,7 +43,8 @@ internal class NativeCallMedia(
     private val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private var originalMode = AudioManager.MODE_NORMAL
     private var routed = false
-    private var connected = false
+    @Volatile private var connected = false
+    @Volatile private var signalingReady = false
     private inline fun <T> step(name: String, action: () -> T): T {
         Log.i("GLACIA-VoIP", "media_stage=$name")
         return try { action() }
@@ -54,6 +55,7 @@ internal class NativeCallMedia(
     }
 
     fun isMediaConnected(): Boolean = connected
+    fun canReceiveSignaling(): Boolean = signalingReady && mediaUserId != 0L
 
     fun protocol(): TdApi.CallProtocol {
         ensureWebRtcContext()
@@ -75,6 +77,8 @@ internal class NativeCallMedia(
         check(call.userId > 0 && ready.encryptionKey?.size == 256) {
             "Telegram did not supply a valid call key."
         }
+        signalingReady = false
+        connected = false
         val instance = native ?: NTgCalls().also { native = it }
         // TDLib uses call.id for signaling. NTgCalls identifies the session by user.id.
         // Always map callback data to the currently active TDLib call in the controller.
@@ -132,6 +136,7 @@ internal class NativeCallMedia(
                 ready.allowP2p, ready.customParameters
             )
         }
+        signalingReady = true
         Log.i("GLACIA-VoIP", "media_setup_complete")
     }
 
@@ -150,7 +155,7 @@ internal class NativeCallMedia(
     }
 
     fun receiveSignaling(data: ByteArray) {
-        if (data.isNotEmpty() && mediaUserId != 0L) native?.sendSignalingData(mediaUserId, data)
+        if (data.isNotEmpty() && canReceiveSignaling()) native?.sendSignalingData(mediaUserId, data)
     }
 
     fun setMuted(muted: Boolean) {
@@ -166,6 +171,7 @@ internal class NativeCallMedia(
     fun stop() {
         val userId = mediaUserId
         mediaUserId = 0L
+        signalingReady = false
         if (userId != 0L) runCatching { native?.stop(userId) }
         native = null
         connected = false
